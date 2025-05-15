@@ -203,7 +203,7 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     accessibility_js = """
 <script>
     let currentFontSize = 16; // Tamanho inicial em pixels
-    const fonts = ['OpenDyslexicRegular', 'Verdana', 'Arial', 'Times New Roman', 'Courier New']; // Fontes disponíveis
+    const fonts = ['Atkinson Hyperlegible', 'Lexend', 'OpenDyslexicRegular', 'Verdana', 'Arial', 'Times New Roman', 'Courier New']; // Fontes disponíveis
     let currentFontIndex = 0;
     const synth = window.speechSynthesis;
     let utterance = null;
@@ -352,6 +352,7 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     </script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/open-dyslexic-regular.css">
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Lexend&display=swap" rel="stylesheet">
     {css}
     {js}
 </head>
@@ -370,6 +371,8 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
         <button onclick="changeFontSize(2)">A+</button>
         <span>Fonte:</span>
         <select id="fontSelector" onchange="setFontFamily(this.value)">
+            <option value="Atkinson Hyperlegible">Atkinson Hyperlegible</option>
+    	    <option value="Lexend">Lexend</option>
             <option value="OpenDyslexicRegular">OpenDyslexic</option>
             <option value="Verdana">Verdana</option>
             <option value="Arial">Arial</option>
