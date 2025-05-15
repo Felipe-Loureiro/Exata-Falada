@@ -169,64 +169,41 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     # <<< ADICIONADO: CSS e JavaScript para acessibilidade >>>
     accessibility_css = """
 <style>
-    body {
-      font-family: Verdana, Arial, sans-serif;
-      line-height: 1.6;
-      padding: 20px;
-      background-color: #f0f0f0;
-      color: #333;
-    }
+    body {font-family: Verdana, Arial, sans-serif; line-height: 1.6; padding: 20px; background-color: #f0f0f0; color: #333;}
 
+    
     /* menu agora sticky */
-    #accessibility-controls {
-      position: sticky;
-      top: 0;
-      z-index: 1000;
-      background-color: #e0e0e0;
-      padding: 10px;
-      margin-bottom: 20px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-    }
+    #accessibility-controls {position: sticky; top: 0; z-index: 1000; padding: 10px; margin-bottom: 20px; border: 1px solid; border-radius: 5px;}
+    body.normal-mode #accessibility-controls {background-color: #e0e0e0; border-color: #ccc; color: #000;}
+    body.dark-mode #accessibility-controls {background-color: #1e1e1e; border-color: #444; color: #fff;}
+    body.high-contrast-mode #accessibility-controls {background-color: #000; border-color: #00FF00; color: #00FF00;}
 
     #accessibility-controls button,
-    #accessibility-controls select {
-      margin: 0 5px;
-      padding: 5px 10px;
-      cursor: pointer;
-    }
+    #accessibility-controls select {margin: 0 5px; padding: 5px 10px; cursor: pointer;}
 
-    .page-content {
-      background-color: #fff;
-      padding: 15px;
-      margin-bottom: 20px;
-      border: 1px solid #ddd;
-      border-radius: 3px;
-    }
+    .page-content {background-color: #fff; padding: 15px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 3px;}
+    body.normal-mode {background-color: #f0f0f0; color: #333;}
+    body.dark-mode {background-color: #121212; color: #ffffff;}
+    body.high-contrast-mode {background-color: #000000;color: #00FF00;}
+    body.normal-mode .page-content {background-color: #ffffff;border-color: #dddddd;}
+    body.dark-mode .page-content {background-color: #1e1e1e;border-color: #444444;}
+    body.high-contrast-mode .page-content {background-color: #000000;border-color: #00FF00;}
 
-    h1, h2, h3 {
-      border-bottom: 1px solid #eee;
-      padding-bottom: 0.3em;
-      color: #000;
-    }
+    h1, h2, h3 {border-bottom: 1px solid; padding-bottom: 0.3em;}
+    body.normal-mode h1, body.normal-mode h2, body.normal-mode h3 { color: #000; border-color: #eee;}
+    body.dark-mode h1, body.dark-mode h2, body.dark-mode h3 {color: #ffffff; border-color: #444;}
+    body.high-contrast-mode h1, body.high-contrast-mode h2, body.high-contrast-mode h3 {color: #00FF00; border-color: #00FF00;}
 
-    hr.page-separator {
-      margin-top: 2em;
-      margin-bottom: 2em;
-      border: 1px dashed #ccc;
-    }
+    hr.page-separator {margin-top: 2em; margin-bottom: 2em; border: 1px dashed #ccc; }
 
-    p i, span i {
-      color: #555;
-      font-style: italic;
-    }
+    p i, span i {color: #555; font-style: italic;}
 </style>
 """
 
     accessibility_js = """
 <script>
     let currentFontSize = 16; // Tamanho inicial em pixels
-    const fonts = ['Verdana', 'Arial', 'Times New Roman', 'Courier New']; // Fontes disponíveis
+    const fonts = ['OpenDyslexicRegular', 'Verdana', 'Arial', 'Times New Roman', 'Courier New']; // Fontes disponíveis
     let currentFontIndex = 0;
     const synth = window.speechSynthesis;
     let utterance = null;
@@ -337,7 +314,20 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     document.addEventListener('DOMContentLoaded', () => {
        setFontFamily(fonts[currentFontIndex]);
        document.getElementById('fontSelector').value = fonts[currentFontIndex];
+       changeTheme('normal');
+       document.getElementById('themeSelector').value = 'normal';
     });
+    
+    function changeTheme(mode) {
+    document.body.classList.remove('normal-mode', 'dark-mode', 'high-contrast-mode');
+    if (mode === 'dark') {
+        document.body.classList.add('dark-mode');
+    } else if (mode === 'high-contrast') {
+        document.body.classList.add('high-contrast-mode');
+    } else {
+        document.body.classList.add('normal-mode');
+    }
+}
 
 </script>
 """
@@ -361,6 +351,7 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     }};
     </script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/open-dyslexic-regular.css">
     {css}
     {js}
 </head>
@@ -379,6 +370,7 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
         <button onclick="changeFontSize(2)">A+</button>
         <span>Fonte:</span>
         <select id="fontSelector" onchange="setFontFamily(this.value)">
+            <option value="OpenDyslexicRegular">OpenDyslexic</option>
             <option value="Verdana">Verdana</option>
             <option value="Arial">Arial</option>
             <option value="Times New Roman">Times New Roman</option>
@@ -388,6 +380,13 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
         <button onclick="speakText()">▶️ Ler/Continuar</button>
         <button onclick="pauseSpeech()">⏸️ Pausar</button>
         <button onclick="stopSpeech()">⏹️ Parar</button>
+        <label for="themeSelector">Tema:</label>
+        <select id="themeSelector" onchange="changeTheme(this.value)">
+            <option value="normal">Normal</option>
+            <option value="dark">Modo Escuro</option>
+            <option value="high-contrast">Alto Contraste</option>
+        </select>
+
     </div>
 """
 
