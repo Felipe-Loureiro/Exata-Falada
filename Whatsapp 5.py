@@ -16,7 +16,7 @@ GEMINI_MODEL_NAME = 'gemini-2.5-flash-preview-04-17' # Modelo recomendado
 
 # --- Lógica Principal (Funções separadas da GUI) ---
 
-def pdf_to_images_local(pdf_path, output_dir, dpi=100):
+def pdf_to_images_local(pdf_path, output_dir, dpi=150):
     """Converte PDF em imagens localmente."""
     image_paths = []
     os.makedirs(output_dir, exist_ok=True)
@@ -27,7 +27,7 @@ def pdf_to_images_local(pdf_path, output_dir, dpi=100):
             zoom = dpi / 72.0
             mat = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat, alpha=False)
-            img_format = "png" # Usar PNG para melhor qualidade no OCR
+            img_format = "png"
             output_filename = os.path.join(output_dir, f"page_{i+1:03d}.{img_format}")
             pix.save(output_filename)
             image_paths.append(output_filename)
@@ -55,29 +55,36 @@ def upload_to_gemini_file_api(image_paths, status_callback):
             continue
 
         try:
-            response = genai.upload_file(path=image_path, display_name=display_name, mime_type=mime_type)
-            uploaded_files_map[image_path] = response
-            status_callback(f"  Done (URI: {response.uri})")
-            time.sleep(2) # Evitar rate limit
+            file_to_upload = genai.upload_file(path=image_path, display_name=display_name, mime_type=mime_type)
+            while file_to_upload.state.name == "PROCESSING":
+                status_callback(f"  Waiting for {base_image_name} to be processed by API...")
+                time.sleep(5)
+                file_to_upload = genai.get_file(file_to_upload.name)
+            
+            if file_to_upload.state.name == "ACTIVE":
+                uploaded_files_map[image_path] = file_to_upload
+                status_callback(f"  Done (URI: {file_to_upload.uri})")
+                time.sleep(1)
+            else:
+                status_callback(f"  Upload Failed for {base_image_name}. File state: {file_to_upload.state.name}")
+                return None
         except google_exceptions.ResourceExhausted as e:
              status_callback(f"  Rate limit likely hit. Error: {e}. Stopping upload.")
-             return None # Parar se der rate limit
+             return None
         except Exception as e:
             status_callback(f"  Upload Failed for {base_image_name}. Error: {e}")
-            # Continuar ou parar? Vamos parar por enquanto.
             return None
     status_callback(f"Finished uploading {len(uploaded_files_map)} files.")
     return uploaded_files_map
 
-def create_html_prompt_with_desc(page_file_object, page_filename, img_dimensions):
-    """Cria o prompt pedindo descrição textual."""
-    # Prompt ajustado para pedir descrição e manter português
+def create_html_prompt_with_desc(page_file_object, page_filename, img_dimensions, current_page_num_for_fn):
+    """Cria o prompt pedindo descrição textual, com manejo de notas de rodapé."""
     prompt = f"""
-Analyze the content of the provided image (filename: {page_filename}, dimensions: {img_dimensions[0]}x{img_dimensions[1]} pixels). Your goal is to convert this page into an accessible HTML format suitable for screen readers, specifically targeting visually impaired STEM students reading Portuguese content. Don't change the original text or language, even if it's wrong, the main goal is fidellity to the original text.
+Analyze the content of the provided image (filename: {page_filename}, dimensions: {img_dimensions[0]}x{img_dimensions[1]} pixels, representing page {current_page_num_for_fn} of the document). Your goal is to convert this page into an accessible HTML format suitable for screen readers, specifically targeting visually impaired STEM students reading Portuguese content. Don't change the original text or language, even if it's wrong; the main goal is fidelity to the original text.
 
 **Instructions:**
 
-1.  **Text Content:** Extract ALL readable text from the image exactly as it appears, preserving the original language (Portuguese). Preserve paragraph structure where possible.
+1.  **Text Content:** Extract ALL readable text from the image exactly as it appears, preserving the original language (Portuguese). Preserve paragraph structure where possible. **Omit standalone page numbers** that typically appear at the very top or bottom of a page, unless they are part of a sentence or reference.
 2.  **Mathematical Equations:**
     *   Identify ALL mathematical equations, formulas, and expressions.
     *   Convert them accurately into LaTeX format. Use `\\(...\\)` for inline math and `$$...$$` for display math. Ensure correct LaTeX syntax.
@@ -88,17 +95,46 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
 4.  **Visual Elements (Descriptions - CRITICAL):**
     *   Identify any significant diagrams, graphs, figures, or images within the page content.
     *   **Instead of including the image itself, provide a concise textual description** in Portuguese of what the visual element shows and its relevance (e.g., "<p><i>[Descrição: Diagrama do circuito elétrico mostrando a ligação em série de...]</i></p>" or "<p><i>[Descrição: Gráfico de barras comparando...]</i></p>"). Use italics or similar indication for the description. Integrate these descriptions logically within the extracted text flow where the visual element appeared.
-5.  **HTML Structure:**
+5.  **Footnotes (Notas de Rodapé - CRITICAL):**
+    *   Identify footnote markers in the main text (e.g., superscript numbers like `¹`, `²`, or symbols like `*`, `†`).
+    *   Identify the corresponding footnote text, typically found at the bottom of the page.
+    *   Link the marker to the text using the following patterns:
+        *   **In-text marker pattern:** `<sup><a href="#fn{current_page_num_for_fn}-{{FOOTNOTE_INDEX_ON_PAGE}}" id="fnref{current_page_num_for_fn}-{{FOOTNOTE_INDEX_ON_PAGE}}" aria-label="Nota de rodapé {{FOOTNOTE_INDEX_ON_PAGE}}">{{MARKER_SYMBOL_FROM_TEXT}}</a></sup>`
+            *   Note: In this pattern, `{current_page_num_for_fn}` will be the actual page number for this image (it's already substituted for you).
+            *   You need to replace `{{FOOTNOTE_INDEX_ON_PAGE}}` with the sequential index (1, 2, 3...) of the footnote you identify on this page.
+            *   You need to replace `{{MARKER_SYMBOL_FROM_TEXT}}` with the actual marker symbol (e.g., 1, *, †) you find in the text.
+        *   **Footnote list pattern:** At the VERY END of this page's HTML content (but before the closing ```html), create a list for all footnotes found on this page:
+            ```html
+            <hr class="footnotes-separator" />
+            <div class="footnotes-section">
+              <h4 class="sr-only">Notas de Rodapé da Página {current_page_num_for_fn}</h4>
+              <ol class="footnotes-list">
+                <li id="fn{current_page_num_for_fn}-{{FOOTNOTE_INDEX_ON_PAGE}}">TEXT_OF_THE_FOOTNOTE_HERE. <a href="#fnref{current_page_num_for_fn}-{{FOOTNOTE_INDEX_ON_PAGE}}" aria-label="Voltar para a referência da nota de rodapé {{FOOTNOTE_INDEX_ON_PAGE}}">&#8617;</a></li>
+                <!-- Add more <li> items for other footnotes on this page, following the pattern above -->
+              </ol>
+            </div>
+            ```
+            *   Again, `{current_page_num_for_fn}` in the pattern will be the actual page number. You need to replace `{{FOOTNOTE_INDEX_ON_PAGE}}` with the correct index for each footnote. Replace `TEXT_OF_THE_FOOTNOTE_HERE` with the extracted footnote text.
+    *   Ensure `id` attributes are unique. The `id` for a footnote `li` should be `fn{current_page_num_for_fn}-{{FOOTNOTE_INDEX_ON_PAGE}}` and its corresponding reference `id` should be `fnref{current_page_num_for_fn}-{{FOOTNOTE_INDEX_ON_PAGE}}` (where `{{FOOTNOTE_INDEX_ON_PAGE}}` is the sequential number like 1, 2, 3...).
+6.  **HTML Structure:**
     *   Use semantic HTML tags (e.g., `<p>`, `<h1>`-`<h6>`, `<ul>`, `<ol>`, `<li>`, `<table>`).
     *   Structure the content logically based on the original layout.
-    *   **Output ONLY the extracted text, LaTeX math, table HTML, and textual descriptions as HTML body content enclosed within a single Markdown code block like this:**
+    *   **Output ONLY the extracted text, LaTeX math, table HTML, textual descriptions, and footnote HTML as HTML body content enclosed within a single Markdown code block like this:**
         ```html
         <!-- HTML body content goes here -->
-        <p>Texto extraído...</p>
+        <p>Texto extraído com uma nota<sup><a href="#fn{current_page_num_for_fn}-1" id="fnref{current_page_num_for_fn}-1" aria-label="Nota de rodapé 1">1</a></sup>.</p>
         <p><i>[Descrição: Diagrama...]</i></p>
         $$ LaTeX $$
         <table>...</table>
         ...
+        <!-- Footnote section for this page, if any, goes here -->
+        <hr class="footnotes-separator" />
+        <div class="footnotes-section">
+          <h4 class="sr-only">Notas de Rodapé da Página {current_page_num_for_fn}</h4>
+          <ol class="footnotes-list">
+            <li id="fn{current_page_num_for_fn}-1">Este é o conteúdo da primeira nota de rodapé. <a href="#fnref{current_page_num_for_fn}-1" aria-label="Voltar para a referência da nota de rodapé 1">&#8617;</a></li>
+          </ol>
+        </div>
         ```
 **CRITICAL: Do NOT add any summary or explanation in any language other than the original Portuguese found in the image. Do NOT include `<img>` tags.** Output only the HTML code block.
 """
@@ -116,7 +152,7 @@ def extract_html_from_response(response_text: str) -> str | None:
         print("  Error: Raw response does not appear to be valid HTML body content.")
         return None
 
-def generate_html_for_image(model, file_object, page_filename, img_path, status_callback):
+def generate_html_for_image(model, file_object, page_filename, img_path, status_callback, current_page_num_for_fn):
     """Gera HTML para uma única imagem."""
     try:
         img = Image.open(img_path)
@@ -126,9 +162,9 @@ def generate_html_for_image(model, file_object, page_filename, img_path, status_
         status_callback(f"  Warning: Could not read image dimensions for {page_filename}: {e}")
         dimensions = ("unknown", "unknown")
 
-    prompt_parts = create_html_prompt_with_desc(file_object, page_filename, dimensions)
+    prompt_parts = create_html_prompt_with_desc(file_object, page_filename, dimensions, current_page_num_for_fn)
     try:
-        status_callback(f"  Sending request to Gemini for {page_filename}...")
+        status_callback(f"  Sending request to Gemini for {page_filename} (Page {current_page_num_for_fn})...")
         response = model.generate_content(prompt_parts)
 
         if not response.candidates:
@@ -142,7 +178,7 @@ def generate_html_for_image(model, file_object, page_filename, img_path, status_
 
         if html_body is None:
              status_callback(f"  Error: Failed to extract HTML for {page_filename}.")
-             status_callback(f"  Raw response: {response.text[:200]}...") # Log part of raw response
+             status_callback(f"  Raw response: {response.text[:200]}...")
              return None
 
         status_callback(f"  HTML extracted for {page_filename}.")
@@ -150,15 +186,17 @@ def generate_html_for_image(model, file_object, page_filename, img_path, status_
 
     except google_exceptions.ResourceExhausted as e:
          status_callback(f"  Error: Rate limit likely hit for {page_filename}. {e}")
-         raise # Re-raise to stop processing in the main thread function
+         raise
     except Exception as e:
         status_callback(f"  An unexpected error occurred processing {page_filename}: {e}")
         if 'response' in locals() and hasattr(response, 'prompt_feedback'):
              status_callback(f"  Prompt Feedback: {response.prompt_feedback}")
         if 'response' in locals() and hasattr(response, 'candidates') and response.candidates:
-             status_callback(f"  Finish Reason: {response.candidates.finish_reason}")
-             status_callback(f"  Safety Ratings: {response.candidates.safety_ratings}")
-        return None # Return None on other errors for this page
+             if hasattr(response.candidates[0], 'finish_reason'):
+                 status_callback(f"  Finish Reason: {response.candidates[0].finish_reason}")
+             if hasattr(response.candidates[0], 'safety_ratings'):
+                 status_callback(f"  Safety Ratings: {response.candidates[0].safety_ratings}")
+        return None
 
 def create_merged_html_with_accessibility(content_list, output_path, pdf_filename):
     """Cria o HTML final com controles de acessibilidade."""
@@ -166,13 +204,10 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
         print("No content to merge.")
         return False
 
-    # <<< ADICIONADO: CSS e JavaScript para acessibilidade >>>
     accessibility_css = """
 <style>
     body {font-family: Verdana, Arial, sans-serif; line-height: 1.6; padding: 20px; background-color: #f0f0f0; color: #333;}
 
-    
-    /* menu agora sticky */
     #accessibility-controls {position: sticky; top: 0; z-index: 1000; padding: 10px; margin-bottom: 20px; border: 1px solid; border-radius: 5px;}
     body.normal-mode #accessibility-controls {background-color: #e0e0e0; border-color: #ccc; color: #000;}
     body.dark-mode #accessibility-controls {background-color: #1e1e1e; border-color: #444; color: #fff;}
@@ -195,15 +230,41 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     body.high-contrast-mode h1, body.high-contrast-mode h2, body.high-contrast-mode h3 {color: #00FF00; border-color: #00FF00;}
 
     hr.page-separator {margin-top: 2em; margin-bottom: 2em; border: 1px dashed #ccc; }
+    hr.footnotes-separator { margin-top: 1.5em; margin-bottom: 1em; border-style: dotted; border-width: 1px 0 0 0; }
+
+    .footnotes-section { margin-top: 1em; padding-top: 0.5em; }
+    .footnotes-list { list-style-type: decimal; padding-left: 20px; font-size: 0.9em; }
+    .footnotes-list li { margin-bottom: 0.5em; }
+    .footnotes-list li a { text-decoration: none; }
+
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border-width: 0;
+    }
 
     p i, span i {color: #555; font-style: italic;}
+
+    sup > a {
+        text-decoration: none;
+        color: #0066cc;
+    }
+    sup > a:hover {
+        text-decoration: underline;
+    }
 </style>
 """
 
     accessibility_js = """
 <script>
-    let currentFontSize = 16; // Tamanho inicial em pixels
-    const fonts = ['Atkinson Hyperlegible', 'Lexend', 'OpenDyslexicRegular', 'Verdana', 'Arial', 'Times New Roman', 'Courier New']; // Fontes disponíveis
+    let currentFontSize = 16;
+    const fonts = ['Atkinson Hyperlegible', 'Lexend', 'OpenDyslexicRegular', 'Verdana', 'Arial', 'Times New Roman', 'Courier New'];
     let currentFontIndex = 0;
     const synth = window.speechSynthesis;
     let utterance = null;
@@ -211,15 +272,9 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
 
     function changeFontSize(delta) {
         currentFontSize += delta;
-        if (currentFontSize < 10) currentFontSize = 10; // Mínimo
-        if (currentFontSize > 40) currentFontSize = 40; // Máximo
+        if (currentFontSize < 10) currentFontSize = 10;
+        if (currentFontSize > 40) currentFontSize = 40;
         document.body.style.fontSize = currentFontSize + 'px';
-    }
-
-    function changeFontFamily() {
-        currentFontIndex = (currentFontIndex + 1) % fonts.length;
-        document.body.style.fontFamily = fonts[currentFontIndex] + ', sans-serif';
-        document.getElementById('fontSelector').value = fonts[currentFontIndex];
     }
 
     function setFontFamily(fontName) {
@@ -231,25 +286,22 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     }
 
     function getTextToSpeak() {
-        // Tenta pegar o texto selecionado, senão pega o corpo todo
         let selectedText = window.getSelection().toString();
         if (selectedText) {
             return selectedText;
         } else {
-            // Pega o conteúdo principal, excluindo os controles
-            const contentElement = document.querySelector('body'); // Ou um ID mais específico se tiver
+            const contentElement = document.querySelector('body');
             if (contentElement) {
                 const controls = document.getElementById('accessibility-controls');
                 let text = '';
-                contentElement.childNodes.forEach(node => {
-                    if (node !== controls && node.textContent) {
-                         // Tenta remover scripts e styles, embora seja melhor estruturar o HTML para isso
-                         if (node.tagName !== 'SCRIPT' && node.tagName !== 'STYLE') {
-                            text += node.textContent.trim() + '\\n\\n';
-                         }
+                Array.from(contentElement.childNodes).forEach(node => {
+                    if (node !== controls && node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'SCRIPT' && node.tagName !== 'STYLE') {
+                        text += node.textContent.trim().replace(/\\s+/g, ' ') + '\\n\\n';
+                    } else if (node.nodeType === Node.TEXT_NODE) {
+                        text += node.textContent.trim().replace(/\\s+/g, ' ') + '\\n\\n';
                     }
                 });
-                return text;
+                return text.trim();
             }
         }
         return '';
@@ -269,9 +321,9 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
 
         const text = getTextToSpeak();
         if (text && synth) {
-            stopSpeech(); // Para qualquer fala anterior
+            stopSpeech();
             utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'pt-BR'; // Define o idioma
+            utterance.lang = 'pt-BR';
             utterance.onerror = function(event) {
                 console.error('SpeechSynthesisUtterance.onerror', event);
                 alert('Erro ao tentar falar o texto: ' + event.error);
@@ -310,25 +362,23 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
         }
     }
 
-    // Inicializa a fonte ao carregar
     document.addEventListener('DOMContentLoaded', () => {
-       setFontFamily(fonts[currentFontIndex]);
-       document.getElementById('fontSelector').value = fonts[currentFontIndex];
+       setFontFamily(fonts[0]);
+       document.getElementById('fontSelector').value = fonts[0];
        changeTheme('normal');
        document.getElementById('themeSelector').value = 'normal';
     });
     
     function changeTheme(mode) {
-    document.body.classList.remove('normal-mode', 'dark-mode', 'high-contrast-mode');
-    if (mode === 'dark') {
-        document.body.classList.add('dark-mode');
-    } else if (mode === 'high-contrast') {
-        document.body.classList.add('high-contrast-mode');
-    } else {
-        document.body.classList.add('normal-mode');
+        document.body.classList.remove('normal-mode', 'dark-mode', 'high-contrast-mode');
+        if (mode === 'dark') {
+            document.body.classList.add('dark-mode');
+        } else if (mode === 'high-contrast') {
+            document.body.classList.add('high-contrast-mode');
+        } else {
+            document.body.classList.add('normal-mode');
+        }
     }
-}
-
 </script>
 """
 
@@ -358,7 +408,6 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
 </head>
 """.format(doc_title=pdf_filename, css=accessibility_css, js=accessibility_js)
 
-    # Monta o HTML final
     merged_html = f"""<!DOCTYPE html>
 <html lang="pt-BR">
 {mathjax_config_head_merged}
@@ -367,10 +416,10 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
 
     <div id="accessibility-controls">
         <span>Tamanho da Fonte:</span>
-        <button onclick="changeFontSize(-2)">A-</button>
-        <button onclick="changeFontSize(2)">A+</button>
-        <span>Fonte:</span>
-        <select id="fontSelector" onchange="setFontFamily(this.value)">
+        <button onclick="changeFontSize(-2)" aria-label="Diminuir tamanho da fonte">A-</button>
+        <button onclick="changeFontSize(2)" aria-label="Aumentar tamanho da fonte">A+</button>
+        <label for="fontSelector">Fonte:</label>
+        <select id="fontSelector" onchange="setFontFamily(this.value)" aria-label="Selecionar família da fonte">
             <option value="Atkinson Hyperlegible">Atkinson Hyperlegible</option>
     	    <option value="Lexend">Lexend</option>
             <option value="OpenDyslexicRegular">OpenDyslexic</option>
@@ -380,16 +429,15 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
             <option value="Courier New">Courier New</option>
         </select>
         <span>Leitura:</span>
-        <button onclick="speakText()">▶️ Ler/Continuar</button>
-        <button onclick="pauseSpeech()">⏸️ Pausar</button>
-        <button onclick="stopSpeech()">⏹️ Parar</button>
+        <button onclick="speakText()" aria-label="Ler ou continuar leitura">▶️ Ler/Continuar</button>
+        <button onclick="pauseSpeech()" aria-label="Pausar leitura">⏸️ Pausar</button>
+        <button onclick="stopSpeech()" aria-label="Parar leitura">⏹️ Parar</button>
         <label for="themeSelector">Tema:</label>
-        <select id="themeSelector" onchange="changeTheme(this.value)">
+        <select id="themeSelector" onchange="changeTheme(this.value)" aria-label="Selecionar tema visual">
             <option value="normal">Normal</option>
             <option value="dark">Modo Escuro</option>
             <option value="high-contrast">Alto Contraste</option>
         </select>
-
     </div>
 """
 
@@ -398,10 +446,11 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
         html_body = content_data["body"]
 
         merged_html += f"\n<hr class=\"page-separator\">\n"
-        merged_html += f"<div class='page-content' id='page-{page_num}'>\n" # Div para cada página
-        merged_html += f"<h2>Página {page_num}</h2>\n"
+        merged_html += f"<div class='page-content' id='page-{page_num}'>\n"
+        merged_html += f"<h2 class=\"sr-only\">Conteúdo da Página {page_num} do PDF Original</h2>\n"
+        merged_html += f"<h3>Página {page_num}</h3>\n"
         merged_html += html_body
-        merged_html += "\n</div>\n" # Fecha a div da página
+        merged_html += "\n</div>\n"
 
     merged_html += """
 </body>
@@ -422,30 +471,35 @@ def process_pdf_thread(pdf_path, output_html_path, dpi, status_callback, complet
     """Função que executa todo o processo em uma thread separada."""
     try:
         status_callback("Starting process...")
-        temp_image_dir = "/Exata_Falada/temp_pdf_images_local" # Diretório temporário
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        temp_image_dir = os.path.join(script_dir, "temp_pdf_images_local")
 
-        # 1. Configurar API Key (Lendo da variável de ambiente)
         api_key = os.environ.get(API_KEY_ENV_VAR)
         if not api_key:
             raise ValueError(f"API Key not found. Set the '{API_KEY_ENV_VAR}' environment variable.")
         genai.configure(api_key=api_key)
         status_callback("API Key configured.")
 
-        # 2. Converter PDF para Imagens
         status_callback("Converting PDF to images...")
         image_paths = pdf_to_images_local(pdf_path, temp_image_dir, dpi)
         if not image_paths:
             raise Exception("Failed to convert PDF to images.")
         status_callback(f"Converted to {len(image_paths)} images.")
 
-        # 3. Fazer Upload para Gemini File API
         uploaded_files_map = upload_to_gemini_file_api(image_paths, status_callback)
         if not uploaded_files_map:
             raise Exception("Failed to upload images to Gemini API.")
 
-        # 4. Gerar HTML para cada imagem via Gemini
         status_callback("Initializing Gemini model...")
-        model = genai.GenerativeModel(model_name=GEMINI_MODEL_NAME)
+        model = genai.GenerativeModel(
+            model_name=GEMINI_MODEL_NAME,
+            safety_settings={
+                'HARM_CATEGORY_HARASSMENT': 'BLOCK_NONE',
+                'HARM_CATEGORY_HATE_SPEECH': 'BLOCK_NONE',
+                'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'BLOCK_NONE',
+                'HARM_CATEGORY_DANGEROUS_CONTENT': 'BLOCK_NONE',
+            }
+        )
         status_callback("Generating accessible HTML content for each page...")
 
         generated_content_list_thread = []
@@ -457,7 +511,7 @@ def process_pdf_thread(pdf_path, output_html_path, dpi, status_callback, complet
             status_callback(f"  Processing Page {page_num}/{len(sorted_paths)} ({base_image_name})...")
             file_object = uploaded_files_map[img_path]
 
-            html_body = generate_html_for_image(model, file_object, base_image_name, img_path, status_callback)
+            html_body = generate_html_for_image(model, file_object, base_image_name, img_path, status_callback, page_num)
 
             if html_body:
                 generated_content_list_thread.append({
@@ -466,16 +520,15 @@ def process_pdf_thread(pdf_path, output_html_path, dpi, status_callback, complet
                 })
             else:
                 status_callback(f"  Skipping page {page_num} due to generation error.")
-            time.sleep(2) # Delay
+            time.sleep(1)
 
         if not generated_content_list_thread:
              raise Exception("No HTML content was generated successfully.")
 
         status_callback("HTML generation finished.")
 
-        # 5. Juntar HTMLs
         status_callback("Merging generated HTML content...")
-        pdf_filename_base = os.path.splitext(os.path.basename(pdf_path))
+        pdf_filename_base = os.path.splitext(os.path.basename(pdf_path))[0]
         success = create_merged_html_with_accessibility(
             generated_content_list_thread,
             output_html_path,
@@ -485,21 +538,27 @@ def process_pdf_thread(pdf_path, output_html_path, dpi, status_callback, complet
             raise Exception("Failed to create merged HTML file.")
         status_callback(f"Merged HTML saved to {output_html_path}")
 
-        # 6. (Opcional) Limpar arquivos temporários (imagens e uploads)
         status_callback("Cleaning up temporary files...")
         try:
-             # Para abrir o primeiro arquivo no Windows Explorer (opcional)
             for img_path in image_paths:
-                os.remove(img_path)
-            os.rmdir(temp_image_dir)
-            status_callback("  Local images removed.")
-            # Deletar arquivos da API do Gemini
+                if os.path.exists(img_path): os.remove(img_path)
+            # Attempt to remove directory only if it's empty after removing files
+            try:
+                if os.path.exists(temp_image_dir) and not os.listdir(temp_image_dir):
+                    os.rmdir(temp_image_dir)
+            except OSError as e: # Catch error if directory is not empty or other issues
+                status_callback(f"  Warning: Could not remove temp directory {temp_image_dir}: {e}")
+
+            status_callback("  Local images cleanup attempted.")
+
+
             count_deleted = 0
             for file_obj in uploaded_files_map.values():
                  try:
                       genai.delete_file(file_obj.name)
                       count_deleted += 1
-                      time.sleep(1) # Delay para delete API
+                      status_callback(f"  Deleted uploaded file: {file_obj.name}")
+                      time.sleep(0.5)
                  except Exception as del_e:
                       status_callback(f"  Warning: Could not delete uploaded file {file_obj.name}: {del_e}")
             status_callback(f"  Attempted to delete {count_deleted} uploaded files from API.")
@@ -509,6 +568,10 @@ def process_pdf_thread(pdf_path, output_html_path, dpi, status_callback, complet
         status_callback("Process finished successfully!")
         completion_callback(True, f"Success! Accessible HTML saved to:\n{output_html_path}")
 
+    except google_exceptions.ResourceExhausted as e:
+        error_message = f"API Rate Limit Reached: {e}. Please wait and try again later, or try with a smaller PDF/fewer pages."
+        status_callback(f"Error: {error_message}")
+        completion_callback(False, error_message)
     except Exception as e:
         error_message = f"An error occurred: {e}"
         status_callback(f"Error: {e}")
@@ -521,54 +584,49 @@ class OldSchoolApp:
     def __init__(self, root):
         self.root = root
         self.root.title("PDF to Accessible HTML Converter")
-        self.root.geometry("600x450")
+        self.root.geometry("700x550")
         self.root.configure(bg='black')
 
-        # Fontes
         self.label_font = font.Font(family="Courier New", size=12)
         self.button_font = font.Font(family="Courier New", size=10, weight="bold")
         self.text_font = font.Font(family="Courier New", size=10)
 
-        # Estilo
         style = ttk.Style()
-        style.theme_use('clam') # Tema base que permite mais customização
+        style.theme_use('clam')
         style.configure("TLabel", background="black", foreground="green", font=self.label_font)
         style.configure("TButton", background="#222", foreground="lime green", font=self.button_font, borderwidth=1, focusthickness=3, focuscolor='lime green')
         style.map("TButton", background=[('active', '#444')], foreground=[('active', 'white')])
         style.configure("TEntry", fieldbackground="#222", foreground="lime green", insertcolor='lime green', font=self.text_font)
         style.configure("TFrame", background="black")
 
-        # Frame Principal
-        main_frame = ttk.Frame(root, padding="10 10 10 10")
+        main_frame = ttk.Frame(root, padding="15 15 15 15")
         main_frame.pack(expand=True, fill=tk.BOTH)
 
-        # Seleção de PDF
         pdf_frame = ttk.Frame(main_frame)
         pdf_frame.pack(fill=tk.X, pady=5)
         ttk.Label(pdf_frame, text="PDF File:").pack(side=tk.LEFT, padx=5)
         self.pdf_path_var = tk.StringVar()
-        self.pdf_entry = ttk.Entry(pdf_frame, textvariable=self.pdf_path_var, width=50)
+        self.pdf_entry = ttk.Entry(pdf_frame, textvariable=self.pdf_path_var, width=60)
         self.pdf_entry.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
         self.browse_button = ttk.Button(pdf_frame, text="Browse...", command=self.select_pdf)
         self.browse_button.pack(side=tk.LEFT, padx=5)
 
-        # Opção de DPI
         dpi_frame = ttk.Frame(main_frame)
         dpi_frame.pack(fill=tk.X, pady=5)
         ttk.Label(dpi_frame, text="Image DPI:").pack(side=tk.LEFT, padx=5)
-        self.dpi_var = tk.StringVar(value="150") # Valor padrão
+        self.dpi_var = tk.StringVar(value="150")
         self.dpi_entry = ttk.Entry(dpi_frame, textvariable=self.dpi_var, width=10)
         self.dpi_entry.pack(side=tk.LEFT, padx=5)
+        ttk.Label(dpi_frame, text="(72-600, higher is slower but better OCR)").pack(side=tk.LEFT, padx=5)
 
-        # Botão de Conversão
+
         self.convert_button = ttk.Button(main_frame, text="Convert to Accessible HTML", command=self.start_conversion)
-        self.convert_button.pack(pady=15)
+        self.convert_button.pack(pady=20)
 
-        # Área de Status/Log
         ttk.Label(main_frame, text="Status:").pack(anchor=tk.W, pady=(10, 0))
-        self.status_text = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, height=15, bg='#111', fg='lime green', font=self.text_font, relief=tk.SUNKEN, bd=1)
+        self.status_text = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, height=18, bg='#111', fg='lime green', font=self.text_font, relief=tk.SUNKEN, bd=1)
         self.status_text.pack(expand=True, fill=tk.BOTH, pady=5)
-        self.status_text.configure(state='disabled') # Começa desabilitado para escrita
+        self.status_text.configure(state='disabled')
 
     def select_pdf(self):
         filepath = filedialog.askopenfilename(
@@ -580,21 +638,42 @@ class OldSchoolApp:
             self.update_status(f"Selected PDF: {filepath}")
 
     def update_status(self, message):
-        """Atualiza a área de status de forma segura para threads."""
         def append_message():
             self.status_text.configure(state='normal')
             self.status_text.insert(tk.END, message + "\n")
             self.status_text.configure(state='disabled')
-            self.status_text.see(tk.END) # Rola para o final
-        # Usa root.after para garantir que a atualização ocorra na thread principal da GUI
+            self.status_text.see(tk.END)
         self.root.after(0, append_message)
 
     def conversion_complete(self, success, message):
-        """Chamado quando a thread de conversão termina."""
         def final_update():
             self.convert_button.config(state=tk.NORMAL, text="Convert to Accessible HTML")
             if success:
                 messagebox.showinfo("Success", message)
+                try:
+                    # Extract the output file path from the success message
+                    # Assumes the path is the last line of the message
+                    output_path_from_message = message.strip().split("\n")[-1]
+                    
+                    # Check if the extracted string is a valid file path
+                    if os.path.isfile(output_path_from_message):
+                        output_dir = os.path.dirname(output_path_from_message)
+                    elif os.path.isdir(output_path_from_message): # Or if it's already a directory
+                        output_dir = output_path_from_message
+                    else: # Fallback or if the message format changes
+                        self.update_status(f"Could not determine output directory from message: {output_path_from_message}")
+                        return
+
+                    if os.path.isdir(output_dir): # Final check
+                        if os.name == 'nt':
+                            os.startfile(output_dir)
+                        elif os.name == 'posix':
+                            if 'darwin' in os.uname().sysname.lower(): # macOS
+                                os.system(f'open "{output_dir}"')
+                            else: # Linux
+                                os.system(f'xdg-open "{output_dir}"')
+                except Exception as e:
+                    self.update_status(f"Could not open output directory: {e}")
             else:
                 messagebox.showerror("Error", message)
             self.update_status("--------------------")
@@ -617,28 +696,24 @@ class OldSchoolApp:
             messagebox.showerror("Error", f"Invalid DPI value: {e}")
             return
 
-        # Define o caminho de saída (mesmo diretório do PDF, com novo nome)
         output_dir = os.path.dirname(pdf_path)
-        pdf_filename_base = os.path.splitext(os.path.basename(pdf_path))
+        pdf_filename_base = os.path.splitext(os.path.basename(pdf_path))[0]
         output_html_path = os.path.join(output_dir, f"{pdf_filename_base}_accessible.html")
 
-        # Limpa status e desabilita botão
         self.status_text.configure(state='normal')
         self.status_text.delete('1.0', tk.END)
         self.status_text.configure(state='disabled')
         self.convert_button.config(state=tk.DISABLED, text="Processing...")
 
-        # Inicia o processamento em uma nova thread
         thread = threading.Thread(
             target=process_pdf_thread,
             args=(pdf_path, output_html_path, dpi, self.update_status, self.conversion_complete)
         )
-        thread.daemon = True # Permite fechar a GUI mesmo se a thread estiver rodando
+        thread.daemon = True
         thread.start()
 
 # --- Execução da Aplicação ---
 if __name__ == "__main__":
-    # Instrução para a chave API (IMPORTANTE)
     print("--------------------------------------------------------------------")
     print(f"IMPORTANT: Ensure your Google AI API Key is set as an environment")
     print(f"variable named '{API_KEY_ENV_VAR}' before running this script.")
@@ -646,13 +721,11 @@ if __name__ == "__main__":
     print("Example (PowerShell):   $env:GOOGLE_API_KEY='YOUR_API_KEY_HERE'")
     print("Example (Linux/macOS):  export GOOGLE_API_KEY='YOUR_API_KEY_HERE'")
     print("--------------------------------------------------------------------")
+    print(f"Using Gemini Model: {GEMINI_MODEL_NAME}")
+    print("--------------------------------------------------------------------")
 
-    # Verifica se a chave API está definida (apenas um aviso inicial)
     if not os.environ.get(API_KEY_ENV_VAR):
          print(f"WARNING: Environment variable '{API_KEY_ENV_VAR}' not detected.")
-         # Poderia mostrar um erro e sair, mas vamos deixar o process_pdf_thread falhar
-         # messagebox.showerror("API Key Error", f"Environment variable '{API_KEY_ENV_VAR}' not set.")
-         # sys.exit(1) # Descomente para sair se a chave não estiver definida
 
     root = tk.Tk()
     app = OldSchoolApp(root)
