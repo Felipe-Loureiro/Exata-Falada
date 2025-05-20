@@ -206,6 +206,7 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
 
     accessibility_css = """
 <style>
+    html, body {margin: 0;padding: 0;overflow-x: hidden;}
     body {font-family: Verdana, Arial, sans-serif; line-height: 1.6; padding: 20px; background-color: #f0f0f0; color: #333;}
 
     #accessibility-controls {position: sticky; top: 0; z-index: 1000; padding: 10px; margin-bottom: 20px; border: 1px solid; border-radius: 5px;}
@@ -213,8 +214,13 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     body.dark-mode #accessibility-controls {background-color: #1e1e1e; border-color: #444; color: #fff;}
     body.high-contrast-mode #accessibility-controls {background-color: #000; border-color: #00FF00; color: #00FF00;}
 
+    #accessibility-controls {display: flex; flex-wrap: wrap; align-items: center; gap: 8px; box-sizing: border-box;}
+
+    #accessibility-controls label,
+    #accessibility-controls select,
     #accessibility-controls button,
-    #accessibility-controls select {margin: 0 5px; padding: 5px 10px; cursor: pointer;}
+    #accessibility-controls span {display: inline-flex; align-items: center; white-space: normal; min-width: 0;}
+    #accessibility-toggle img {pointer-events: none;}
 
     .page-content {background-color: #fff; padding: 15px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 3px;}
     body.normal-mode {background-color: #f0f0f0; color: #333;}
@@ -237,27 +243,18 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     .footnotes-list li { margin-bottom: 0.5em; }
     .footnotes-list li a { text-decoration: none; }
 
-    .sr-only {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border-width: 0;
-    }
+    .sr-only {position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0;}
 
     p i, span i {color: #555; font-style: italic;}
 
-    sup > a {
-        text-decoration: none;
-        color: #0066cc;
-    }
-    sup > a:hover {
-        text-decoration: underline;
-    }
+    sup > a {text-decoration: none; color: #0066cc;}
+    sup > a:hover {text-decoration: underline;}
+
+    #accessibility-toggle {position: fixed; top: 20px; right: 20px; z-index: 1100; width: 50px; height: 50px; background-color: #007BFF; color: white; border: none; border-radius: 50%; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);}
+
+    #accessibility-controls.collapsed {display: none;}
+
+    #accessibility-controls.expanded {position: fixed; top: 80px; right: 20px; width: 100%; max-width: 360px; box-sizing: border-box; overflow: auto; max-height: calc(100vh - 100px);}
 </style>
 """
 
@@ -296,9 +293,9 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
                 let text = '';
                 Array.from(contentElement.childNodes).forEach(node => {
                     if (node !== controls && node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'SCRIPT' && node.tagName !== 'STYLE') {
-                        text += node.textContent.trim().replace(/\\s+/g, ' ') + '\\n\\n';
+                        text += node.textContent.trim().replace(/\s+/g, ' ') + '\n\n';
                     } else if (node.nodeType === Node.TEXT_NODE) {
-                        text += node.textContent.trim().replace(/\\s+/g, ' ') + '\\n\\n';
+                        text += node.textContent.trim().replace(/\s+/g, ' ') + '\n\n';
                     }
                 });
                 return text.trim();
@@ -356,6 +353,9 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     function stopSpeech() {
         if (synth.speaking || synth.paused) {
             console.log("Stopping speech.");
+            if (utterance) {
+                utterance.onerror = null;
+            }
             synth.cancel();
             utterance = null;
             isPaused = false;
@@ -365,8 +365,8 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     document.addEventListener('DOMContentLoaded', () => {
        setFontFamily(fonts[0]);
        document.getElementById('fontSelector').value = fonts[0];
-       changeTheme('normal');
-       document.getElementById('themeSelector').value = 'normal';
+       changeTheme('dark');
+       document.getElementById('themeSelector').value = 'dark';
     });
     
     function changeTheme(mode) {
@@ -378,6 +378,12 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
         } else {
             document.body.classList.add('normal-mode');
         }
+    }
+
+    function toggleAccessibilityMenu() {
+        const menu = document.getElementById('accessibility-controls');
+        menu.classList.toggle('collapsed');
+        menu.classList.toggle('expanded');
     }
 </script>
 """
@@ -414,31 +420,46 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
 <body>
     <h1>Documento Acessível: {pdf_filename}</h1>
 
-    <div id="accessibility-controls">
-        <span>Tamanho da Fonte:</span>
-        <button onclick="changeFontSize(-2)" aria-label="Diminuir tamanho da fonte">A-</button>
-        <button onclick="changeFontSize(2)" aria-label="Aumentar tamanho da fonte">A+</button>
-        <label for="fontSelector">Fonte:</label>
-        <select id="fontSelector" onchange="setFontFamily(this.value)" aria-label="Selecionar família da fonte">
-            <option value="Atkinson Hyperlegible">Atkinson Hyperlegible</option>
-    	    <option value="Lexend">Lexend</option>
-            <option value="OpenDyslexicRegular">OpenDyslexic</option>
-            <option value="Verdana">Verdana</option>
-            <option value="Arial">Arial</option>
-            <option value="Times New Roman">Times New Roman</option>
-            <option value="Courier New">Courier New</option>
-        </select>
-        <span>Leitura:</span>
-        <button onclick="speakText()" aria-label="Ler ou continuar leitura">▶️ Ler/Continuar</button>
-        <button onclick="pauseSpeech()" aria-label="Pausar leitura">⏸️ Pausar</button>
-        <button onclick="stopSpeech()" aria-label="Parar leitura">⏹️ Parar</button>
-        <label for="themeSelector">Tema:</label>
-        <select id="themeSelector" onchange="changeTheme(this.value)" aria-label="Selecionar tema visual">
-            <option value="normal">Normal</option>
-            <option value="dark">Modo Escuro</option>
-            <option value="high-contrast">Alto Contraste</option>
-        </select>
+    <div id="accessibility-controls" class="collapsed">
+        <div class="control-group">
+            <span>Tamanho da Fonte:</span>
+            <button onclick="changeFontSize(-2)">A-</button>
+            <button onclick="changeFontSize(2)">A+</button>
+        </div>
+
+        <div class="control-group">
+            <label for="fontSelector">Fonte:</label>
+            <select id="fontSelector" onchange="setFontFamily(this.value)" aria-label="Selecionar família da fonte">
+                <option value="Atkinson Hyperlegible">Atkinson Hyperlegible</option>
+                <option value="Lexend">Lexend</option>
+                <option value="OpenDyslexicRegular">OpenDyslexic</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Arial">Arial</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Courier New">Courier New</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <span>Leitura:</span>
+            <button onclick="speakText()" aria-label="Ler ou continuar leitura">▶️ Ler/Continuar</button>
+            <button onclick="pauseSpeech()" aria-label="Pausar leitura">⏸️ Pausar</button>
+            <button onclick="stopSpeech()" aria-label="Parar leitura">⏹️ Parar</button>
+        </div>
+
+        <div class="control-group">
+            <label for="themeSelector">Tema:</label>
+            <select id="themeSelector" onchange="changeTheme(this.value)" aria-label="Selecionar tema visual">
+                <option value="normal">Modo Claro</option>
+                <option value="dark">Modo Escuro</option>
+                <option value="high-contrast">Alto Contraste</option>
+            </select>
+        </div>
     </div>
+
+    <button id="accessibility-toggle" onclick="toggleAccessibilityMenu()" aria-label="Abrir/Fechar Menu de Acessibilidade">
+    <img src="https://cdn.userway.org/widgetapp/images/body_wh.svg" alt="" style="width: 130%; height: 130%;" />
+    </button>
 """
 
     for content_data in content_list:
