@@ -388,18 +388,15 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
 <style>
     html, body {margin: 0;padding: 0;overflow-x: hidden;}
     body {font-family: Verdana, Arial, sans-serif; line-height: 1.6; padding: 20px; background-color: #f0f0f0; color: #333; transition: background-color 0.3s, color 0.3s;}
-    #accessibility-controls {
-        position: sticky; top: 0; z-index: 1000; padding: 10px; margin-bottom: 20px; 
-        border: 1px solid; border-radius: 5px; display: flex; flex-wrap: wrap; 
-        align-items: center; gap: 8px; box-sizing: border-box;
-    }
+    #accessibility-controls {position: sticky; top: 0; z-index: 1000; padding: 10px; margin-bottom: 20px; border: 1px solid; border-radius: 5px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; box-sizing: border-box;}
     body.normal-mode #accessibility-controls:not(.expanded) {background-color: #e0e0e0; border-color: #ccc; color: #000;}
     body.dark-mode #accessibility-controls:not(.expanded) {background-color: #1e1e1e; border-color: #444; color: #fff;}
     body.high-contrast-mode #accessibility-controls:not(.expanded) {background-color: #000; border-color: #00FF00; color: #00FF00;}
-    #accessibility-controls label, #accessibility-controls select, #accessibility-controls button {
-        margin: 0 5px; padding: 5px 10px; cursor: pointer; border-radius: 3px; 
-    }
-    #accessibility-controls .control-group > span:first-child { display: block; margin-bottom: 8px; font-weight: bold; }
+    #accessibility-controls .control-group > button,
+    #accessibility-controls .control-group > select,
+    #accessibility-controls .control-group > label:not(:first-child),
+    #accessibility-controls .control-group > span:not(:first-child) {display: inline-flex; align-items: center; justify-content: center; white-space: normal; min-width: 0; word-break: break-all; flex-grow: 0; flex-shrink: 1; flex-basis: auto; max-width: 100%; padding: 5px 10px; border-radius: 3px; box-sizing: border-box; cursor: pointer; text-align: center; margin: 0;}
+    #accessibility-controls .control-group > *:first-child {width: 100%; flex-shrink: 0; box-sizing: border-box; margin-bottom: 8px; font-weight: bold; white-space: normal; word-break: break-word;}
     #accessibility-toggle img {pointer-events: none;}
     .page-content {padding: 15px; margin-bottom: 20px; border: 1px solid; border-radius: 3px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);}
     body.normal-mode {background-color: #f0f0f0; color: #333;}
@@ -453,8 +450,8 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     body.high-contrast-mode #accessibility-toggle { background-color: #FFFF00; color: #000; border: 1px solid #000;}
     body.high-contrast-mode #accessibility-toggle img { filter: invert(1) brightness(0.8); }
     #accessibility-controls.collapsed { display: none; }
-    #accessibility-controls.expanded { position: fixed; top: 80px; right: 20px; width: 100%; max-width: 360px; box-sizing: border-box; overflow-y: auto; max-height: calc(100vh - 100px); display: flex; flex-direction: column; align-items: stretch; padding: 15px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
-    .control-group { margin-bottom: 15px; padding: 10px; border: 1px solid; border-radius: 4px; }
+    #accessibility-controls.expanded {position: fixed; top: 80px; right: 20px; width: 100%; max-width: 360px; box-sizing: border-box; overflow: auto; max-height: calc(100vh - 100px);}
+    .control-group {display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; margin-bottom: 15px; border: 1px solid; border-radius: 4px; box-sizing: border-box;}
     body.normal-mode .control-group { border-color: #bbb; } 
     body.dark-mode .control-group { border-color: #555; }
     body.high-contrast-mode .control-group { border-color: #FFFF00; }
@@ -488,10 +485,10 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
                 let text = '';
                 Array.from(mainContentElement.childNodes).forEach(node => {
                     if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'SCRIPT' && node.tagName !== 'STYLE' && !node.classList.contains('sr-only')) {
-                        text += node.textContent.trim().replace(/\\s+/g, ' ') + '\\n\\n'; 
+                        text += node.textContent.trim().replace(/\\s+/g, ' ') + '\n\n'; 
                     } else if (node.nodeType === Node.TEXT_NODE) {
                         let nodeText = node.textContent.trim().replace(/\\s+/g, ' '); 
-                        if (nodeText) text += nodeText + '\\n\\n';
+                        if (nodeText) text += nodeText + '\n\n';
                     }
                 }); return text.trim();
             }
@@ -557,10 +554,11 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
         options: {{ skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'], ignoreHtmlClass: 'tex2jax_ignore', processHtmlClass: 'tex2jax_process' }},
         svg: {{ fontCache: 'global' }} }};
     </script>
-    <script src="[https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js](https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js)" id="MathJax-script" async></script>
-    <link rel="preconnect" href="[https://fonts.googleapis.com](https://fonts.googleapis.com)"><link rel="preconnect" href="[https://fonts.gstatic.com](https://fonts.gstatic.com)" crossorigin>
-    <link href="[https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&family=Lexend:wght@100..900&display=swap](https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&family=Lexend:wght@100..900&display=swap)" rel="stylesheet">
-    <link rel="stylesheet" href="[https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/open-dyslexic.css](https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/open-dyslexic.css)">
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&family=Lexend:wght@100..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/open-dyslexic-regular.css">
     {accessibility_css}{accessibility_js}
 </head>
 """
@@ -570,7 +568,7 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
 <body class="dark-mode">
     <header role="banner"><h1>Documento Acessível: {pdf_filename_title}</h1></header>
     <button id="accessibility-toggle" onclick="toggleAccessibilityMenu()" aria-label="Abrir Menu de Acessibilidade" aria-expanded="false">
-        <img src="[https://cdn.userway.org/widgetapp/images/body_wh.svg](https://cdn.userway.org/widgetapp/images/body_wh.svg)" alt="" style="width: 100%; height: 100%;" />
+    <img src="https://cdn.userway.org/widgetapp/images/body_wh.svg" alt="" style="width: 130%; height: 130%;"/>
     </button>
     <div id="accessibility-controls" class="collapsed" role="region" aria-labelledby="accessibility-menu-heading">
         <h2 id="accessibility-menu-heading" class="sr-only">Menu de Controles de Acessibilidade</h2>
