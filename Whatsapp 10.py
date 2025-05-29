@@ -15,7 +15,7 @@ import concurrent.futures  # Para processamento concorrente
 
 # --- Configuração Inicial ---
 API_KEY_ENV_VAR = "GOOGLE_API_KEY"
-DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash'
+DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
 AVAILABLE_GEMINI_MODELS = [
     'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite',
     'gemini-2.5-flash-preview-05-20', 'gemini-1.5-flash-8b',
@@ -485,10 +485,12 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
                 let text = '';
                 Array.from(mainContentElement.childNodes).forEach(node => {
                     if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'SCRIPT' && node.tagName !== 'STYLE' && !node.classList.contains('sr-only')) {
-                        text += node.textContent.trim().replace(/\\s+/g, ' ') + '\n\n'; 
+                        // MODIFICADO ABAIXO: Corrigido regex de \\s+ para \s+
+                        text += node.textContent.trim().replace(/\s+/g, ' ') + '\\n\\n'; 
                     } else if (node.nodeType === Node.TEXT_NODE) {
-                        let nodeText = node.textContent.trim().replace(/\\s+/g, ' '); 
-                        if (nodeText) text += nodeText + '\n\n';
+                        // MODIFICADO ABAIXO: Corrigido regex de \\s+ para \s+
+                        let nodeText = node.textContent.trim().replace(/\s+/g, ' '); 
+                        if (nodeText) text += nodeText + '\\n\\n';
                     }
                 }); return text.trim();
             }
@@ -518,12 +520,22 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
         document.body.classList.remove('normal-mode', 'dark-mode', 'high-contrast-mode');
         document.body.classList.add(themeName + '-mode'); localStorage.setItem('accessibilityTheme', themeName);
     }
+    // MODIFICADO ABAIXO: Lógica de toggle mais explícita
     function toggleAccessibilityMenu() {
-        const menu = document.getElementById('accessibility-controls'); const toggleButton = document.getElementById('accessibility-toggle');
-        menu.classList.toggle('collapsed'); menu.classList.toggle('expanded');
-        const isExpanded = menu.classList.contains('expanded');
-        toggleButton.setAttribute('aria-expanded', isExpanded.toString());
-        toggleButton.setAttribute('aria-label', isExpanded ? 'Fechar Menu de Acessibilidade' : 'Abrir Menu de Acessibilidade');
+        const menu = document.getElementById('accessibility-controls');
+        const toggleButton = document.getElementById('accessibility-toggle');
+
+        if (menu.classList.contains('expanded')) {
+            menu.classList.remove('expanded');
+            menu.classList.add('collapsed');
+        } else {
+            menu.classList.remove('collapsed');
+            menu.classList.add('expanded');
+        }
+
+        const isNowExpanded = menu.classList.contains('expanded');
+        toggleButton.setAttribute('aria-expanded', isNowExpanded.toString());
+        toggleButton.setAttribute('aria-label', isNowExpanded ? 'Fechar Menu de Acessibilidade' : 'Abrir Menu de Acessibilidade');
     }
     document.addEventListener('DOMContentLoaded', () => {
         populateVoiceList();
@@ -545,6 +557,7 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     });
 </script>
 """
+    # Restante da função create_merged_html_with_accessibility continua igual...
     mathjax_config_head_merged = f"""
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
