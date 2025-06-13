@@ -283,6 +283,9 @@ def upload_to_gemini_file_api(image_paths_to_upload, num_upload_workers, cancel_
 
 
 def create_html_prompt_with_desc(page_file_object, page_filename, img_dimensions, current_page_num_in_doc):
+    """
+    Gera o prompt para o Gemini, agora com uma instrução explícita para formatar URLs.
+    """
     prompt = f"""
 Analyze the content of the provided image (filename: {page_filename}, dimensions: {img_dimensions[0]}x{img_dimensions[1]} pixels, representing page {current_page_num_in_doc} of the document). Your goal is to convert this page into an accessible HTML format suitable for screen readers, specifically targeting visually impaired STEM students reading Portuguese content. Don't change the original text or language, even if it's wrong; the main goal is fidelity to the original text.
 **Instructions:**
@@ -293,13 +296,19 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
     * Preserve paragraph structure where possible.
     * **Omit standalone page numbers** that typically appear at the very top or bottom of a page, unless they are part of a sentence or reference.
 
-2.  **Mathematical Equations:**
+2.  **Web Links (URLs):**
+    * Identify all web addresses (URLs, links) in the text (e.g., starting with `http://`, `https://`, `www.`).
+    * **CRITICAL: You MUST format them as clickable HTML links using the `<a>` tag.**
+    * The `href` attribute must contain the full, correct URL, and the link text should also be the full URL.
+    * **Example:** If the text reads `disponível em https://www.exemplo.com/doc.pdf`, the HTML output MUST be `disponível em <a href="https://www.exemplo.com/doc.pdf">https://www.exemplo.com/doc.pdf</a>`.
+
+3.  **Mathematical Equations:**
     * Identify ALL mathematical equations, formulas, and expressions.
     * Convert them accurately into LaTeX format.
     * **CRITICAL DELIMITER USAGE:** For inline mathematics, YOU MUST USE `\\(...\\)` (e.g., `\\(x=y\\)`). For display mathematics (equations on their own line), YOU MUST USE `$$...$$` (e.g., `$$x = \\sum y_i$$`).
     * **Ensure that *all* mathematical symbols, including single-letter variables mentioned in prose (e.g., '...where v is velocity...'), are enclosed in inline LaTeX delimiters (e.g., output as '...where \\(v\\) is velocity...').** This applies to all isolated symbols.
 
-3.  **Tables (CRITICAL FOR ACCESSIBILITY):**
+4.  **Tables (CRITICAL FOR ACCESSIBILITY):**
     * Identify any tables.
     * **CRITICAL:** Extract the table's main title or header and place it inside a `<caption>` tag as the very first element within the `<table>`. Example: `<table><caption>Vendas Mensais por Região</caption>...</table>`. This provides essential context for screen reader users.
     * Format the table using proper HTML tags (`<table>`, `<thead>`, `<tbody>`, `<tr>`, `<th>`, `<td>`).
@@ -341,18 +350,20 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
         </table>
         ```
 
-4.  **Hierarquia de Títulos (NAVIGATION CRITICAL):**
+5.  **Hierarquia de Títulos (NAVIGATION CRITICAL):**
     * Identify the document's structural hierarchy within the page content (e.g., section titles, sub-section titles).
+    * **CRITICAL:** DO NOT create new titles or headings that do not exist in the original text.
     * Use `<h3>`, `<h4>`, `<h5>`, and `<h6>` tags to mark this hierarchy. A main section title on the page should be `<h3>`, a subsection within it `<h4>`, and so on.
     * **YOU MUST add a unique `id` to every heading you create.** Use the format `id="h{{LEVEL}}-{current_page_num_in_doc}-{{INDEX}}"`, where `{{LEVEL}}` is the heading number (3, 4, etc.) and `{{INDEX}}` is a sequential number for that heading level on the page (1, 2, 3...).
     * Example: `<h3 id="h3-{current_page_num_in_doc}-1">Primeira Seção</h3>`, `<h4 id="h4-{current_page_num_in_doc}-1">Primeira Subseção</h4>`.
 
-5.  **Visual Elements (Descriptions):**
+6.  **Visual Elements (Descriptions):**
     * Identify significant diagrams, graphs, figures, or images relevant to the academic content. **DO NOT** describe purely decorative elements like logos that are not relevant to the understanding of the text.
     * **Instead of including the image itself, provide a concise textual description** in Portuguese, wrapped in `<p><em>...</em></p>`. The description should explain what the visual element shows and its relevance.
+    * In the case of a bar code, QR code, or similar, **ALWAYS** indicate that it is there and describe its purpose using the `<p><em>...</em></p>` tag.
     * Example: `<p><em>[Descrição: Diagrama de um circuito elétrico RLC em série, mostrando a fonte de tensão, o resistor R, o indutor L e o capacitor C.]</em></p>`.
 
-6.  **Footnotes (Notas de Rodapé):**
+7.  **Footnotes (Notas de Rodapé):**
     * Identify footnote markers and their corresponding text.
     * Link them using the following precise patterns:
         * **In-text marker:** `<sup><a href="#fn{current_page_num_in_doc}-{{INDEX}}" id="fnref{current_page_num_in_doc}-{{INDEX}}" aria-label="Nota de rodapé {{INDEX}}">{{MARKER}}</a></sup>`
@@ -367,11 +378,11 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
             </div>
             ```
 
-7.  **Abreviações e Acrônimos:**
+8.  **Abreviações e Acrônimos:**
     * If you identify a known abbreviation or acronym (e.g., ABNT, PIB, DNA), use the `<abbr>` tag to provide its full expansion. This helps screen readers pronounce them correctly.
     * Example: `Segundo a <abbr title="Associação Brasileira de Normas Técnicas">ABNT</abbr>, a regra é...`
 
-8.  **Final HTML Structure:**
+9.  **Final HTML Structure:**
     * Use semantic HTML.
     * **AVOID UNNECESSARY TAGS:** Do NOT use `<bdi>` tags. They are generally not needed for Portuguese or mathematical content and can interfere with screen readers.
     * Output ONLY the extracted content as HTML body content in a single Markdown code block.
@@ -477,7 +488,7 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
 
     accessibility_css = """
 <style>
-    html, body {margin: 0;padding: 0;overflow-x: hidden;}
+    html, body {margin: 0;padding: 0;overflow-x: auto;}
     body {font-family: Verdana, Arial, sans-serif; line-height: 1.6; padding: 20px; background-color: #f0f0f0; color: #333; transition: background-color 0.3s, color 0.3s;}
     #accessibility-controls {position: sticky; top: 0; z-index: 1000; padding: 10px; margin-bottom: 20px; border: 1px solid; border-radius: 5px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; box-sizing: border-box;}
     body.normal-mode #accessibility-controls:not(.expanded) {background-color: #e0e0e0; border-color: #ccc; color: #000;}
@@ -1030,7 +1041,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <script>
     MathJax = {{
         tex: {{
-            inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
+            inlineMath: [['\\\\(', '\\\\)']],
             displayMath: [['$$', '$$']],
             processEscapes: true,
             processEnvironments: true,
