@@ -20,16 +20,21 @@ API_KEY_ENV_VAR = "GOOGLE_API_KEY"
 DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
 AVAILABLE_GEMINI_MODELS = [
     'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite',
-    'gemini-2.5-flash-preview-05-20', 'gemini-1.5-flash-8b',
+    'gemini-2.5-flash-preview-05-20', 'gemini-1.5-flash-8b', 'gemini-2.5-pro-preview-06-05'
 ]
 
-MAX_RETRIES_PER_CALL = 2
+# Limites e Constantes para o Escalonamento
+MODELO_ESCALONAMENTO = 'gemini-2.5-flash-preview-05-20'
+LIMITE_TOKENS_ESCALONAMENTO = 65536
+FINISH_REASON_MAX_TOKENS = 2
+
+MAX_RETRIES_PER_CALL = 5
 INITIAL_BACKOFF = 1  # seconds
-MAX_BACKOFF = 8  # seconds
+MAX_BACKOFF = 2  # seconds
 PHASE_MAX_RETRIES = 1
 
-DEFAULT_UPLOAD_MAX_WORKERS = 5
-DEFAULT_GENERATE_MAX_WORKERS = 3
+DEFAULT_UPLOAD_MAX_WORKERS = 25
+DEFAULT_GENERATE_MAX_WORKERS = 25
 
 
 class OperationCancelledError(Exception):
@@ -284,49 +289,92 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
 1.  **Text Content (MAXIMUM FIDELITY REQUIRED):**
     * Extract ALL readable text from the image **EXACTLY** as it appears.
     * Preserve the original language (Portuguese) and the **PRECISE WORDING AND ORDER OF WORDS**.
-    * Do NOT paraphrase, reorder, or 'correct' the text, even if it seems stylistically better or contains errors in the original. Reproduce it verbatim.
+    * Do NOT paraphrase, reorder, or 'correct' the text. Reproduce it verbatim.
     * Preserve paragraph structure where possible.
     * **Omit standalone page numbers** that typically appear at the very top or bottom of a page, unless they are part of a sentence or reference.
+
 2.  **Mathematical Equations:**
     * Identify ALL mathematical equations, formulas, and expressions.
     * Convert them accurately into LaTeX format.
-    * **CRITICAL DELIMITER USAGE:** For inline mathematics, YOU MUST USE `\\(...\\)` (e.g., `\\(x=y\\)`). DO NOT use single `$` signs for inline math (e.g., AVOID `$x=y$`). Single `$` signs might not be rendered correctly by the system.
-    * For display mathematics (equations on their own line), YOU MUST USE `$$...$$` (e.g., `$$x = \\sum y_i$$`).
-    * **Ensure that *all* mathematical symbols, including single-letter variables mentioned in descriptive text or prose (e.g., if the original text says '...where v is velocity...'), are enclosed in inline LaTeX delimiters (e.g., output as '...where \\(v\\) is velocity...').** This applies even to isolated symbols or variables.
-    * Ensure correct LaTeX syntax within these delimiters.
-3.  **Tables:**
-    * Identify any tables present in the image.
-    * Extract the data accurately, maintaining row and column structure.
-    * Format the table using proper HTML table tags (`<table>`, `<thead>`, `<tbody>`, `<tr>`, `<th>`, `<td>`). Include table headers (`<th>`) if identifiable.
-4.  **Visual Elements (Descriptions - CRITICAL):**
-    * Identify any significant diagrams, graphs, figures, or images within the page content. Only do this if the image is relevant to the text, avoid doing this for logos in headers and other similar elements that are not relevant for the understanding of the page.
-    * **Instead of including the image itself, provide a concise textual description** in Portuguese of what the visual element shows and its relevance (e.g., "<p><i>[Descrição: Diagrama do circuito elétrico mostrando a ligação em série de...]</i></p>" or "<p><i>[Descrição: Gráfico de barras comparando...]</i></p>"). Use italics or similar indication for the description. Integrate these descriptions logically within the extracted text flow where the visual element appeared.
-5.  **Footnotes (Notas de Rodapé - CRITICAL):**
-    * Identify footnote markers in the main text (e.g., superscript numbers like `¹`, `²`, or symbols like `*`, `†`).
-    * Identify the corresponding footnote text, typically found at the bottom of the page.
-    * Link the marker to the text using the following patterns:
-        * **In-text marker pattern:** `<sup><a href="#fn{current_page_num_in_doc}-{{FOOTNOTE_INDEX_ON_PAGE}}" id="fnref{current_page_num_in_doc}-{{FOOTNOTE_INDEX_ON_PAGE}}" aria-label="Nota de rodapé {{FOOTNOTE_INDEX_ON_PAGE}}">{{MARKER_SYMBOL_FROM_TEXT}}</a></sup>`
-            * `{current_page_num_in_doc}` is the actual page number. Replace `{{FOOTNOTE_INDEX_ON_PAGE}}` with sequential index (1, 2, 3...) on this page. Replace `{{MARKER_SYMBOL_FROM_TEXT}}` with actual marker.
-        * **Footnote list pattern:** At VERY END of this page's HTML (before closing ```html):
+    * **CRITICAL DELIMITER USAGE:** For inline mathematics, YOU MUST USE `\\(...\\)` (e.g., `\\(x=y\\)`). For display mathematics (equations on their own line), YOU MUST USE `$$...$$` (e.g., `$$x = \\sum y_i$$`).
+    * **Ensure that *all* mathematical symbols, including single-letter variables mentioned in prose (e.g., '...where v is velocity...'), are enclosed in inline LaTeX delimiters (e.g., output as '...where \\(v\\) is velocity...').** This applies to all isolated symbols.
+
+3.  **Tables (CRITICAL FOR ACCESSIBILITY):**
+    * Identify any tables.
+    * **CRITICAL:** Extract the table's main title or header and place it inside a `<caption>` tag as the very first element within the `<table>`. Example: `<table><caption>Vendas Mensais por Região</caption>...</table>`. This provides essential context for screen reader users.
+    * Format the table using proper HTML tags (`<table>`, `<thead>`, `<tbody>`, `<tr>`, `<th>`, `<td>`).
+    * **Pay close attention to table structure:**
+        * Correctly identify header cells and use the `<th>` tag for them.
+        * For column and row headers, use the `scope` attribute (e.g., `<th scope="col">Nome da Coluna</th>`, `<th scope="row">Nome da Linha</th>`).
+        * Accurately detect and represent merged cells using `colspan` for horizontally merged cells and `rowspan` for vertically merged cells.
+    * **Example of a complex table structure:**
+        ```html
+        <table>
+          <caption>Exemplo de Tabela Complexa</caption>
+          <thead>
+            <tr>
+              <th scope="col">Produto</th>
+              <th scope="col" colspan="2">Detalhes de Vendas</th>
+            </tr>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col">Região A</th>
+              <th scope="col">Região B</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Item 1</th>
+              <td>100</td>
+              <td>150</td>
+            </tr>
+            <tr>
+              <th scope="row" rowspan="2">Itens Agrupados</th>
+              <td>200</td>
+              <td>210</td>
+            </tr>
+            <tr>
+              <td>205</td>
+              <td>215</td>
+            </tr>
+          </tbody>
+        </table>
+        ```
+
+4.  **Hierarquia de Títulos (NAVIGATION CRITICAL):**
+    * Identify the document's structural hierarchy within the page content (e.g., section titles, sub-section titles).
+    * Use `<h3>`, `<h4>`, `<h5>`, and `<h6>` tags to mark this hierarchy. A main section title on the page should be `<h3>`, a subsection within it `<h4>`, and so on.
+    * **YOU MUST add a unique `id` to every heading you create.** Use the format `id="h{{LEVEL}}-{current_page_num_in_doc}-{{INDEX}}"`, where `{{LEVEL}}` is the heading number (3, 4, etc.) and `{{INDEX}}` is a sequential number for that heading level on the page (1, 2, 3...).
+    * Example: `<h3 id="h3-{current_page_num_in_doc}-1">Primeira Seção</h3>`, `<h4 id="h4-{current_page_num_in_doc}-1">Primeira Subseção</h4>`.
+
+5.  **Visual Elements (Descriptions):**
+    * Identify significant diagrams, graphs, figures, or images relevant to the academic content. **DO NOT** describe purely decorative elements like logos that are not relevant to the understanding of the text.
+    * **Instead of including the image itself, provide a concise textual description** in Portuguese, wrapped in `<p><em>...</em></p>`. The description should explain what the visual element shows and its relevance.
+    * Example: `<p><em>[Descrição: Diagrama de um circuito elétrico RLC em série, mostrando a fonte de tensão, o resistor R, o indutor L e o capacitor C.]</em></p>`.
+
+6.  **Footnotes (Notas de Rodapé):**
+    * Identify footnote markers and their corresponding text.
+    * Link them using the following precise patterns:
+        * **In-text marker:** `<sup><a href="#fn{current_page_num_in_doc}-{{INDEX}}" id="fnref{current_page_num_in_doc}-{{INDEX}}" aria-label="Nota de rodapé {{INDEX}}">{{MARKER}}</a></sup>`
+        * **Footnote list (at the very end of the page's HTML):**
             ```html
             <hr class="footnotes-separator" />
             <div class="footnotes-section">
               <h4 class="sr-only">Notas de Rodapé da Página {current_page_num_in_doc}</h4>
               <ol class="footnotes-list">
-                <li id="fn{current_page_num_in_doc}-{{FOOTNOTE_INDEX_ON_PAGE}}">TEXT_OF_THE_FOOTNOTE_HERE. <a href="#fnref{current_page_num_in_doc}-{{FOOTNOTE_INDEX_ON_PAGE}}" aria-label="Voltar para a referência da nota de rodapé {{FOOTNOTE_INDEX_ON_PAGE}}">&#8617;</a></li>
+                <li id="fn{current_page_num_in_doc}-{{INDEX}}">TEXT_OF_THE_FOOTNOTE. <a href="#fnref{current_page_num_in_doc}-{{INDEX}}" aria-label="Voltar para a referência da nota de rodapé {{INDEX}}">&#8617;</a></li>
               </ol>
             </div>
             ```
-            * Replace `{{FOOTNOTE_INDEX_ON_PAGE}}` and `TEXT_OF_THE_FOOTNOTE_HERE`.
-    * Ensure unique `id` attributes: `fn{current_page_num_in_doc}-{{INDEX}}` and `fnref{current_page_num_in_doc}-{{INDEX}}`.
-6.  **HTML Structure:**
-    * Use semantic HTML. Output ONLY extracted text, LaTeX, table HTML, descriptions, and footnote HTML as HTML body content in a single Markdown code block:
-        ```html
-        <p>Texto com nota<sup><a href="#fn{current_page_num_in_doc}-1" id="fnref{current_page_num_in_doc}-1" aria-label="Nota de rodapé 1">1</a></sup>.</p>
-        <p><i>[Descrição: Diagrama...]</i></p>
-        $$ LaTeX $$
-        <hr class="footnotes-separator" /><div class="footnotes-section"><h4 class="sr-only">Notas de Rodapé da Página {current_page_num_in_doc}</h4><ol class="footnotes-list"><li id="fn{current_page_num_in_doc}-1">Nota aqui. <a href="#fnref{current_page_num_in_doc}-1" aria-label="Voltar para a referência 1">&#8617;</a></li></ol></div>
-        ```
+
+7.  **Abreviações e Acrônimos:**
+    * If you identify a known abbreviation or acronym (e.g., ABNT, PIB, DNA), use the `<abbr>` tag to provide its full expansion. This helps screen readers pronounce them correctly.
+    * Example: `Segundo a <abbr title="Associação Brasileira de Normas Técnicas">ABNT</abbr>, a regra é...`
+
+8.  **Final HTML Structure:**
+    * Use semantic HTML.
+    * **AVOID UNNECESSARY TAGS:** Do NOT use `<bdi>` tags. They are generally not needed for Portuguese or mathematical content and can interfere with screen readers.
+    * Output ONLY the extracted content as HTML body content in a single Markdown code block.
     * **AVOID UNNECESSARY TAGS:** Do NOT use `<bdi>` tags unless there is a clear, demonstrable need for bi-directional text isolation. This is generally not required for mathematical variables or simple text in Portuguese.
 **CRITICAL: Do NOT add any summary/explanation beyond original Portuguese. NO `<img>` tags.** Output only HTML code block.
 """
@@ -346,7 +394,7 @@ def extract_html_from_response(response_text: str) -> str | None:
     return None
 
 
-def generate_html_for_image_task(model, file_object_from_api, page_filename_local, local_img_path, cancel_event,
+def generate_html_for_image_task(model_name, file_object_from_api, page_filename_local, local_img_path, cancel_event,
                                  status_callback_main_thread, current_page_num_in_doc, original_page_order_index):
     if cancel_event.is_set(): raise OperationCancelledError("Geração HTML (task) cancelada antes de iniciar.")
 
@@ -356,7 +404,7 @@ def generate_html_for_image_task(model, file_object_from_api, page_filename_loca
             base64_image_data = base64.b64encode(img_file.read()).decode('utf-8')
     except Exception as e_b64:
         status_callback_main_thread(f"  Aviso: Falha ao ler/codificar imagem {os.path.basename(local_img_path)} para Base64: {e_b64}")
-        base64_image_data = None # Ensure it's None if encoding fails
+        base64_image_data = None 
 
     dimensions_tuple = ("desconhecida", "desconhecida")
     try:
@@ -368,7 +416,21 @@ def generate_html_for_image_task(model, file_object_from_api, page_filename_loca
 
     prompt_parts = create_html_prompt_with_desc(file_object_from_api, page_filename_local, dimensions_tuple,
                                                 current_page_num_in_doc)
-    generation_config = genai.types.GenerationConfig(temperature=0.1)
+    
+    # --- LÓGICA DE ESCALONAMENTO DE CONFIGURAÇÃO ---
+    generation_config_dict = {'temperature': 0.1}
+    if model_name == MODELO_ESCALONAMENTO:
+        generation_config_dict['max_output_tokens'] = LIMITE_TOKENS_ESCALONAMENTO
+        status_callback_main_thread(f"  Usando modelo de escalonamento '{model_name}' para pág. {current_page_num_in_doc} com limite de {LIMITE_TOKENS_ESCALONAMENTO} tokens.")
+    
+    generation_config = genai.types.GenerationConfig(**generation_config_dict)
+    
+    # Inicializa o modelo aqui dentro da task
+    model = genai.GenerativeModel(model_name=model_name)
+
+    response = None
+    final_finish_reason = None
+    html_body = None
 
     try:
         response = gemini_api_call_with_retry(model.generate_content, cancel_event, status_callback_main_thread,
@@ -376,49 +438,38 @@ def generate_html_for_image_task(model, file_object_from_api, page_filename_loca
     except Exception as e:
         status_callback_main_thread(
             f"  Exceção na API Gemini para {page_filename_local} (pág {current_page_num_in_doc}): {type(e).__name__} - {e}")
-        return original_page_order_index, current_page_num_in_doc, None, base64_image_data
+        return original_page_order_index, current_page_num_in_doc, None, base64_image_data, None # Retorna None para motivo
 
     if cancel_event.is_set(): raise OperationCancelledError("Geração HTML (task) cancelada após chamada API.")
 
-    if not response.candidates:
-        status_callback_main_thread(
-            f"  Erro: Sem candidatos de resposta para {page_filename_local} (pág {current_page_num_in_doc}).")
-        if hasattr(response, 'prompt_feedback'): status_callback_main_thread(f"  Feedback: {response.prompt_feedback}")
-        return original_page_order_index, current_page_num_in_doc, None, base64_image_data
+    if response and response.candidates:
+        # Pega o motivo de finalização para análise posterior
+        final_finish_reason = response.candidates[0].finish_reason.value
 
-    # Try to get text, prioritizing response.text, then parts
-    response_text_content = response.text # Preferred way
-    if not response_text_content and response.candidates[0].content and response.candidates[0].content.parts:
-        response_text_content = ''.join(
-            part.text for part in response.candidates[0].content.parts if hasattr(part, 'text')
-        )
-
-    if not response_text_content:
-        status_callback_main_thread(
-            f"  Erro: Conteúdo da resposta vazio para {page_filename_local} (pág {current_page_num_in_doc}).")
-        return original_page_order_index, current_page_num_in_doc, None, base64_image_data
-
-    html_body = extract_html_from_response(response_text_content)
-
-    # Post-processing to remove potentially problematic <bdi> tags if Gemini adds them
-    if html_body:
-        # Remove <bdi> around simple variables or LaTeX commands
-        html_body = re.sub(r'<bdi>([a-zA-Z0-9_](?:<sup>.*?</sup>)?)</bdi>', r'\1', html_body)
-        html_body = re.sub(r'<bdi>(\\[a-zA-Z]+(?:\{.*?\})?(?:\s*\^\{.*?\})?(?:\s*_\{.*?\})?)</bdi>', r'\1', html_body)
-        # Remove empty <bdi> tags
-        html_body = re.sub(r'<bdi>\s*</bdi>', '', html_body)
-
+        response_text_content = response.text
+        if not response_text_content and response.candidates[0].content and response.candidates[0].content.parts:
+            response_text_content = ''.join(
+                part.text for part in response.candidates[0].content.parts if hasattr(part, 'text')
+            )
+        
+        if response_text_content:
+            html_body = extract_html_from_response(response_text_content)
+            # ... (post-processing de bdi continua o mesmo)
+            if html_body:
+                html_body = re.sub(r'<bdi>([a-zA-Z0-9_](?:<sup>.*?</sup>)?)</bdi>', r'\1', html_body)
+                html_body = re.sub(r'<bdi>(\\[a-zA-Z]+(?:\{.*?\})?(?:\s*\^\{.*?\})?(?:\s*_\{.*?\})?)</bdi>', r'\1', html_body)
+                html_body = re.sub(r'<bdi>\s*</bdi>', '', html_body)
 
     if html_body is None:
         status_callback_main_thread(
             f"  Erro: Falha ao extrair HTML para {page_filename_local} (pág {current_page_num_in_doc}).")
-        status_callback_main_thread(f"  Texto bruto (300c): {response_text_content[:300]}...")
-        if hasattr(response.candidates[0], 'finish_reason'): status_callback_main_thread(
-            f"  Motivo: {response.candidates[0].finish_reason}")
-        return original_page_order_index, current_page_num_in_doc, None, base64_image_data
+        if response:
+            status_callback_main_thread(f"  Texto bruto (300c): {str(response.text)[:300]}...")
+            status_callback_main_thread(f"  Motivo: {final_finish_reason} ({response.candidates[0].finish_reason.name})")
+        return original_page_order_index, current_page_num_in_doc, None, base64_image_data, final_finish_reason
 
     status_callback_main_thread(f"  HTML extraído para pág. PDF {current_page_num_in_doc} ({page_filename_local}).")
-    return original_page_order_index, current_page_num_in_doc, html_body, base64_image_data
+    return original_page_order_index, current_page_num_in_doc, html_body, base64_image_data, final_finish_reason
 
 
 def create_merged_html_with_accessibility(content_list, output_path, pdf_filename_title):
@@ -442,7 +493,7 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     body.normal-mode {background-color: #f0f0f0; color: #333;}
     body.normal-mode .page-content {background-color: #ffffff;border-color: #dddddd;}
     body.normal-mode h1, body.normal-mode h2 { color: #000; border-color: #eee;}
-    body.normal-mode p i, body.normal-mode span i { color: #555; }
+    body.normal-mode p i, body.normal-mode span i, body.normal-mode p em, body.normal-mode span em { color: #555555 !important; }
     body.normal-mode sup > a { color: #0066cc; }
     body.normal-mode hr.page-separator { border-color: #ccc; }
     body.normal-mode hr.footnotes-separator { border-color: #ccc; }
@@ -451,7 +502,7 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     body.dark-mode {background-color: #121212; color: #e0e0e0;}
     body.dark-mode .page-content {background-color: #1e1e1e;border-color: #444444;}
     body.dark-mode h1, body.dark-mode h2 {color: #ffffff; border-color: #444;}
-    body.dark-mode p i, body.dark-mode span i { color: #aaa; }
+    body.dark-mode p i, body.dark-mode span i, body.dark-mode p em, body.dark-mode span em { color: #AAAAAA !important; }
     body.dark-mode sup > a { color: #87CEFA; }
     body.dark-mode hr.page-separator { border-color: #555; }
     body.dark-mode hr.footnotes-separator { border-color: #555; }
@@ -461,7 +512,7 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
     body.high-contrast-mode .page-content {background-color: #000000;border: 2px solid #FFFF00;}
     body.high-contrast-mode h1, body.high-contrast-mode h2 {color: #FFFF00; border-color: #FFFF00;}
     body.high-contrast-mode p, body.high-contrast-mode span, body.high-contrast-mode li, body.high-contrast-mode td, body.high-contrast-mode th { color: #FFFF00 !important; }
-    body.high-contrast-mode p i, body.high-contrast-mode span i { color: #00FF00; }
+    body.high-contrast-mode p i, body.high-contrast-mode span i, body.high-contrast-mode p em, body.high-contrast-mode span em {color: #01FF01 !important;}
     body.high-contrast-mode sup > a { color: #00FFFF; text-decoration: underline; }
     body.high-contrast-mode hr.page-separator { border: 2px dashed #FFFF00; }
     body.high-contrast-mode hr.footnotes-separator { border: 1px dotted #FFFF00; }
@@ -560,106 +611,416 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
         border-color: #FFFF00; /* Yellow border in high contrast */
         background-color: #000;
     }
+    .tts-highlight {
+        background-color: yellow !important;
+        color: black !important; /* Força o texto para a cor preta */
+        box-shadow: 0 0 8px rgba(218, 165, 32, 0.7); /* Sombra sutil dourada/amarela */
+        transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+        border-radius: 3px;
+    }
+        .dark-mode .tts-highlight { background-color: #58a6ff; }
+        .high-contrast-mode .tts-highlight { background-color: #FFFF00; color: black !important; }
 </style>
 """
     accessibility_js = r"""
 <script>
-    let currentFontSize = 16;
-    const fonts = ['Atkinson Hyperlegible', 'Lexend', 'OpenDyslexicRegular', 'Verdana', 'Arial', 'Times New Roman', 'Courier New'];
-    let currentFontIndex = 0; const synth = window.speechSynthesis;
-    let utterance = null; let isPaused = false; let voices = [];
-    function populateVoiceList() {
-        voices = synth.getVoices().filter(voice => voice.lang.startsWith('pt'));
-        if (voices.length === 0) { voices = synth.getVoices(); } // Fallback to all voices if no Portuguese found
-    }
-    if (synth.onvoiceschanged !== undefined) { synth.onvoiceschanged = populateVoiceList; }
-    populateVoiceList(); // Initial call
-    function changeFontSize(delta) {
-        currentFontSize += delta; if (currentFontSize < 10) currentFontSize = 10; if (currentFontSize > 48) currentFontSize = 48;
-        document.body.style.fontSize = currentFontSize + 'px'; localStorage.setItem('accessibilityFontSize', currentFontSize);
-    }
-    function setFontFamily(fontName) {
-        const index = fonts.indexOf(fontName);
-        if (index !== -1) { currentFontIndex = index; document.body.style.fontFamily = fonts[currentFontIndex] + ', sans-serif'; localStorage.setItem('accessibilityFontFamily', fontName); }
-    }
-    function getTextToSpeak() {
-        let selectedText = window.getSelection().toString().trim();
-        if (selectedText) { return selectedText; } else {
-            const mainContentElement = document.getElementById('main-content');
-            if (mainContentElement) {
-                let text = '';
-                // Iterate through direct children of main-content to respect semantic structure better
-                Array.from(mainContentElement.childNodes).forEach(node => {
-                    if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'SCRIPT' && node.tagName !== 'STYLE' && !node.classList.contains('sr-only') && node.tagName !== 'DETAILS') {
-                        // Get text content, replace multiple whitespaces/newlines with a single space, then add two newlines for paragraph breaks
-                        text += node.textContent.trim().replace(/\s+/g, ' ') + '\n\n';
-                    } else if (node.nodeType === Node.TEXT_NODE) {
-                        let nodeText = node.textContent.trim().replace(/\s+/g, ' ');
-                        if (nodeText) text += nodeText + '\n\n';
-                    }
-                }); return text.trim();
-            }
-        } return '';
-    }
-    function speakText() {
-        if (synth.speaking && !isPaused) return; if (synth.paused && utterance) { synth.resume(); isPaused = false; return; }
-        const textToSay = getTextToSpeak();
-        if (textToSay && synth) {
-            stopSpeech(); utterance = new SpeechSynthesisUtterance(textToSay);
-            const portugueseVoice = voices.find(voice => voice.lang === 'pt-BR') || voices.find(voice => voice.lang === 'pt-PT');
-            if (portugueseVoice) { utterance.voice = portugueseVoice; utterance.lang = portugueseVoice.lang; }
-            else if (voices.length > 0) { utterance.voice = voices[0]; utterance.lang = voices[0].lang; } // Fallback to first available voice
-            else { utterance.lang = 'pt-BR'; } // Default lang if no voices
-            utterance.onerror = function(event) { console.error('SpeechSynthesisUtterance.onerror', event); };
-            utterance.onend = function() { utterance = null; isPaused = false; };
-            synth.speak(utterance); isPaused = false;
-        } else if (!synth) { console.warn('Text-to-Speech not supported.'); }
-        else { console.info('No text selected or available to speak.'); }
-    }
-    function pauseSpeech() { if (synth.speaking && !isPaused) { synth.pause(); isPaused = true; } }
-    function stopSpeech() {
-        if (synth.speaking || synth.paused) { if (utterance) { utterance.onerror = null; } synth.cancel(); }
-        utterance = null; isPaused = false;
-    }
-    function changeTheme(themeName) {
-        document.body.classList.remove('normal-mode', 'dark-mode', 'high-contrast-mode');
-        document.body.classList.add(themeName + '-mode'); localStorage.setItem('accessibilityTheme', themeName);
-    }
-    function toggleAccessibilityMenu() {
-        const menu = document.getElementById('accessibility-controls');
-        const toggleButton = document.getElementById('accessibility-toggle');
+// --- CONFIGURAÇÃO E ESTADO GLOBAL ---
+let currentFontSize = 16;
+const fonts = ['Atkinson Hyperlegible', 'Lexend', 'OpenDyslexicRegular', 'Verdana', 'Arial', 'Times New Roman', 'Courier New'];
+let currentFontIndex = 0;
 
-        if (menu.classList.contains('expanded')) {
-            menu.classList.remove('expanded');
-            menu.classList.add('collapsed');
-        } else {
-            menu.classList.remove('collapsed');
-            menu.classList.add('expanded');
+const synth = window.speechSynthesis;
+let voices = [];
+let utterance = null;
+let isPaused = false;
+
+// Estado da fila de leitura
+let speechQueue = [];
+let currentSegmentIndex = 0;
+let currentlyHighlightedElement = null;
+
+
+// --- FUNÇÕES DE SÍNTESE DE VOZ E PROCESSAMENTO DE TEXTO ---
+
+// NOVA FUNÇÃO PARA PROCESSAR TABELAS DE FORMA INTELIGENTE
+// VERSÃO APRIMORADA E MAIS ROBUSTA
+function processTable(tableNode) {
+    let content = [];
+    const caption = tableNode.querySelector('caption');
+    if (caption && caption.innerText.trim()) {
+        content.push(`Iniciando tabela com título: ${caption.innerText.trim()}.`);
+    } else {
+        content.push("Iniciando tabela.");
+    }
+
+    const headers = [];
+    // Procura por cabeçalhos (th) na primeira linha da tabela
+    const firstRow = tableNode.querySelector('tr');
+    if (firstRow) {
+        firstRow.querySelectorAll('th').forEach(th => {
+            headers.push(th.innerText.trim());
+        });
+    }
+
+    const allRows = Array.from(tableNode.querySelectorAll('tr'));
+    // Se encontramos cabeçalhos na primeira linha, pulamos ela no loop principal
+    const bodyRows = headers.length > 0 ? allRows.slice(1) : allRows;
+
+    bodyRows.forEach(row => {
+        let rowContent = [];
+        // Lida com o cabeçalho da linha (um 'th' no início da linha)
+        const rowHeader = row.querySelector('th');
+        if (rowHeader && rowHeader.innerText.trim()) {
+            rowContent.push(`Linha: ${rowHeader.innerText.trim()}.`);
         }
 
-        const isNowExpanded = menu.classList.contains('expanded');
-        toggleButton.setAttribute('aria-expanded', isNowExpanded.toString());
-        toggleButton.setAttribute('aria-label', isNowExpanded ? 'Fechar Menu de Acessibilidade' : 'Abrir Menu de Acessibilidade');
-    }
-    document.addEventListener('DOMContentLoaded', () => {
-        populateVoiceList(); // Populate voices on DOM load
-        const savedTheme = localStorage.getItem('accessibilityTheme') || 'dark'; // Default to dark
-        changeTheme(savedTheme); document.getElementById('themeSelector').value = savedTheme;
-        const savedFontSize = parseInt(localStorage.getItem('accessibilityFontSize'), 10) || 16;
-        currentFontSize = savedFontSize; document.body.style.fontSize = currentFontSize + 'px';
-        const defaultFont = fonts.includes('Atkinson Hyperlegible') ? 'Atkinson Hyperlegible' : fonts[0];
-        const savedFontFamily = localStorage.getItem('accessibilityFontFamily') || defaultFont;
-        setFontFamily(savedFontFamily); document.getElementById('fontSelector').value = savedFontFamily;
-        document.addEventListener('keydown', function(event) { if (event.key === "Escape") { stopSpeech(); } });
-        const menu = document.getElementById('accessibility-controls'); const toggleButton = document.getElementById('accessibility-toggle');
-        if (menu && !menu.classList.contains('expanded')) { menu.classList.add('collapsed'); }
-        if (toggleButton && menu) { // Set initial aria attributes for the toggle button
-            const isExpanded = menu.classList.contains('expanded');
-            toggleButton.setAttribute('aria-expanded', isExpanded.toString());
-            toggleButton.setAttribute('aria-label', isExpanded ? 'Fechar Menu de Acessibilidade' : 'Abrir Menu de Acessibilidade');
+        const cells = row.querySelectorAll('td');
+        cells.forEach((cell, index) => {
+            // Associa a célula ao cabeçalho da coluna pelo índice
+            const headerText = headers[index] || `Coluna ${index + 1}`;
+            const cellText = cell.innerText.trim();
+            if (cellText) {
+                rowContent.push(`${headerText}: ${cellText}.`);
+            }
+        });
+
+        if (rowContent.length > 0) {
+            content.push(rowContent.join(' '));
         }
     });
+
+    // Salvaguarda: se a análise estruturada falhar, lê o texto bruto da tabela.
+    if (content.length <= 1) { // Apenas contém "Iniciando tabela."
+        const fallbackText = tableNode.innerText.trim().replace(/\s+/g, ' ');
+        if (fallbackText) {
+            return { text: "Tabela encontrada. Conteúdo: " + fallbackText, element: tableNode };
+        } else {
+            return { text: "Tabela encontrada, mas está vazia.", element: tableNode };
+        }
+    }
+
+    return {
+        text: content.join(' '),
+        element: tableNode
+    };
+}
+
+function populateVoiceList() {
+    voices = synth.getVoices().sort((a, b) => a.lang.localeCompare(b.lang));
+    const voiceSelector = document.getElementById('voiceSelector');
+    if (!voiceSelector) return;
+    voiceSelector.innerHTML = '';
+
+    const ptVoices = voices.filter(voice => voice.lang.startsWith('pt'));
+    //const otherVoices = voices.filter(voice => !voice.lang.startsWith('pt'));
+    const sortedVoices = [...ptVoices];
+
+    sortedVoices.forEach(voice => {
+        const option = document.createElement('option');
+        option.textContent = `${voice.name} (${voice.lang})`;
+        option.setAttribute('data-lang', voice.lang);
+        option.setAttribute('data-name', voice.name);
+        voiceSelector.appendChild(option);
+    });
+
+    const savedVoiceName = localStorage.getItem('accessibilityVoiceName');
+    if (savedVoiceName) {
+        const savedOption = Array.from(voiceSelector.options).find(opt => opt.textContent.includes(savedVoiceName));
+        if (savedOption) savedOption.selected = true;
+    }
+}
+
+
+// VERSÃO APRIMORADA E NÃO RECURSIVA
+function extractContentWithSemantics(rootNode) {
+    const segments = [];
+    // 1. Pega uma lista de todos os elementos de conteúdo relevantes na ordem do documento
+    const elementsToProcess = rootNode.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, table');
+
+    elementsToProcess.forEach(node => {
+        // 2. Pula qualquer elemento que esteja DENTRO de uma tabela (como um <p> numa célula),
+        //    pois a função processTable cuidará dele.
+        if (node.closest('table') && node.tagName !== 'TABLE') {
+            return;
+        }
+
+        // 3. Se o elemento é uma tabela, usa nosso processador especializado
+        if (node.tagName === 'TABLE') {
+            const tableSegment = processTable(node);
+            if (tableSegment && tableSegment.text) {
+                segments.push(tableSegment);
+            }
+        // 4. Se for qualquer outro tipo de bloco de texto, processa seu conteúdo
+        } else {
+            let prefix = '';
+            if (node.tagName === 'LI') {
+                prefix = 'Item da lista: ';
+            }
+            const text = (node.innerText || node.textContent).trim();
+            if (text) {
+                segments.push({
+                    text: prefix + text.replace(/\s+/g, ' '),
+                    element: node
+                });
+            }
+        }
+    });
+
+    return segments;
+}
+
+
+function speakText() {
+    if (synth.speaking && !isPaused) return;
+
+    if (synth.paused && utterance) {
+        synth.resume();
+        return;
+    }
+
+    // Se a fila está vazia, cria uma nova
+    if (speechQueue.length === 0) {
+        let rootNode;
+        const selectedText = window.getSelection().toString().trim();
+        if (selectedText) {
+            speechQueue = [{ text: "Texto selecionado: " + selectedText, element: null }];
+        } else {
+            rootNode = document.getElementById('main-content') || document.body;
+            speechQueue = extractContentWithSemantics(rootNode);
+        }
+    }
+
+    // Define o ponto de partida e inicia a leitura em cadeia
+    currentSegmentIndex = 0;
+    playQueue();
+}
+
+function playQueue() {
+    if (currentSegmentIndex >= speechQueue.length) {
+        stopSpeech();
+        return;
+    }
+
+    const segment = speechQueue[currentSegmentIndex];
+    if (!segment || !segment.text) {
+        currentSegmentIndex++;
+        playQueue();
+        return;
+    }
+
+    // Limpa destaque anterior e aplica o novo
+    if (currentlyHighlightedElement) {
+        currentlyHighlightedElement.classList.remove('tts-highlight');
+    }
+    if (segment.element) {
+        currentlyHighlightedElement = segment.element;
+        currentlyHighlightedElement.classList.add('tts-highlight');
+        currentlyHighlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    utterance = new SpeechSynthesisUtterance(segment.text);
+
+    // Configura voz, velocidade e tom
+    const voiceSelector = document.getElementById('voiceSelector');
+    const selectedOption = voiceSelector.options[voiceSelector.selectedIndex];
+    if (selectedOption) {
+        const voiceName = selectedOption.getAttribute('data-name');
+        utterance.voice = voices.find(voice => voice.name === voiceName);
+    }
+    utterance.rate = parseFloat(document.getElementById('rateSlider').value);
+    utterance.pitch = parseFloat(document.getElementById('pitchSlider').value);
+
+    utterance.onerror = (event) => {
+        console.error('SpeechSynthesisUtterance.onerror', event);
+        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight');
+    };
+
+    // Ao terminar, avança para o próximo item da fila
+    utterance.onend = () => {
+        currentSegmentIndex++;
+        playQueue();
+    };
+
+    // Trata a retomada da pausa
+    utterance.onresume = () => {
+        isPaused = false;
+        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.add('tts-highlight');
+    };
+
+    // Trata a pausa
+    utterance.onpause = () => {
+        isPaused = true;
+        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight');
+    };
+
+    synth.speak(utterance);
+    isPaused = false;
+}
+
+function pauseSpeech() {
+    if (synth.speaking && !isPaused) {
+        synth.pause();
+    }
+}
+
+function stopSpeech() {
+    if (utterance) utterance.onend = null; // Impede que o onend seja chamado após o cancelamento
+    isPaused = false;
+    synth.cancel();
+
+    if (currentlyHighlightedElement) {
+        currentlyHighlightedElement.classList.remove('tts-highlight');
+        currentlyHighlightedElement = null;
+    }
+
+    speechQueue = [];
+    currentSegmentIndex = 0;
+    utterance = null;
+}
+
+// --- FUNÇÕES DE NAVEGAÇÃO (LÓGICA REFEITA) ---
+
+function skipToPrevious() {
+    // Só funciona se houver uma fila e não estiver no primeiro item
+    if (speechQueue.length === 0 || currentSegmentIndex <= 0) {
+        return;
+    }
+
+    // 1. Move o índice para o item anterior
+    currentSegmentIndex--;
+
+    // 2. Para a fala atual, desanexando o 'onend' para evitar chamadas duplas
+    if (utterance) utterance.onend = null;
+    synth.cancel();
+
+    // 3. Toca o novo item com um pequeno atraso para o navegador processar o cancelamento
+    setTimeout(playQueue, 100);
+}
+
+function skipToNext() {
+    // Só funciona se houver uma fila e não estiver no último item
+    if (speechQueue.length === 0 || currentSegmentIndex >= speechQueue.length - 1) {
+        stopSpeech();
+        return;
+    }
+
+    // 1. Move o índice para o próximo item
+    currentSegmentIndex++;
+
+    // 2. Para a fala atual, desanexando o 'onend'
+    if (utterance) utterance.onend = null;
+    synth.cancel();
+
+    // 3. Toca o novo item com um pequeno atraso
+    setTimeout(playQueue, 100);
+}
+
+
+// --- FUNÇÕES DE ACESSIBILIDADE VISUAL E CONTROLES ---
+
+function updateFontSizeDisplay() {
+    const fontSizeValue = document.getElementById('fontSizeValue');
+    if (fontSizeValue) fontSizeValue.textContent = `${currentFontSize}px`;
+}
+
+function changeFontSize(delta) {
+    currentFontSize += delta;
+    if (currentFontSize < 10) currentFontSize = 10;
+    if (currentFontSize > 48) currentFontSize = 48;
+    document.body.style.fontSize = currentFontSize + 'px';
+    localStorage.setItem('accessibilityFontSize', currentFontSize);
+    updateFontSizeDisplay();
+}
+
+function setFontFamily(fontName) {
+    document.body.style.fontFamily = fontName + ', sans-serif';
+    localStorage.setItem('accessibilityFontFamily', fontName);
+}
+
+function changeTheme(themeName) {
+    document.body.className = '';
+    document.body.classList.add(themeName + '-mode');
+    localStorage.setItem('accessibilityTheme', themeName);
+}
+
+function updateSliderLabels() {
+    const rateSlider = document.getElementById('rateSlider');
+    const rateValue = document.getElementById('rateValue');
+    const pitchSlider = document.getElementById('pitchSlider');
+    const pitchValue = document.getElementById('pitchValue');
+
+    if(rateValue) rateValue.textContent = `${parseFloat(rateSlider.value).toFixed(1)}x`;
+    if(pitchValue) pitchValue.textContent = parseFloat(pitchSlider.value).toFixed(1);
+}
+
+function saveSpeechSettings() {
+    const voiceSelector = document.getElementById('voiceSelector');
+    if (voiceSelector) {
+        const selectedVoice = voiceSelector.options[voiceSelector.selectedIndex];
+        if (selectedVoice) {
+            localStorage.setItem('accessibilityVoiceName', selectedVoice.getAttribute('data-name'));
+        }
+    }
+    localStorage.setItem('accessibilityRate', document.getElementById('rateSlider').value);
+    localStorage.setItem('accessibilityPitch', document.getElementById('pitchSlider').value);
+}
+
+function toggleAccessibilityMenu() {
+    const menu = document.getElementById('accessibility-controls');
+    const toggleButton = document.getElementById('accessibility-toggle');
+    const isExpanded = menu.classList.toggle('expanded');
+    menu.classList.toggle('collapsed', !isExpanded);
+    toggleButton.setAttribute('aria-expanded', isExpanded.toString());
+    toggleButton.setAttribute('aria-label', isExpanded ? 'Fechar Menu de Acessibilidade' : 'Abrir Menu de Acessibilidade');
+}
+
+
+// --- INICIALIZAÇÃO ---
+document.addEventListener('DOMContentLoaded', () => {
+    if (synth.onvoiceschanged !== undefined) {
+        synth.onvoiceschanged = populateVoiceList;
+    }
+    populateVoiceList();
+
+    const savedTheme = localStorage.getItem('accessibilityTheme') || 'dark';
+    changeTheme(savedTheme);
+    document.getElementById('themeSelector').value = savedTheme;
+
+    const savedFontSize = parseInt(localStorage.getItem('accessibilityFontSize'), 10) || 16;
+    currentFontSize = savedFontSize;
+    document.body.style.fontSize = currentFontSize + 'px';
+    updateFontSizeDisplay();
+
+    const savedFontFamily = localStorage.getItem('accessibilityFontFamily') || fonts[0];
+    setFontFamily(savedFontFamily);
+    document.getElementById('fontSelector').value = savedFontFamily;
+
+    const savedRate = localStorage.getItem('accessibilityRate') || '1';
+    document.getElementById('rateSlider').value = savedRate;
+    const savedPitch = localStorage.getItem('accessibilityPitch') || '1';
+    document.getElementById('pitchSlider').value = savedPitch;
+
+    updateSliderLabels();
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "Escape") {
+            stopSpeech();
+        }
+    });
+
+    const menu = document.getElementById('accessibility-controls');
+    const toggleButton = document.getElementById('accessibility-toggle');
+    if (menu && !menu.classList.contains('expanded')) {
+        menu.classList.add('collapsed');
+    }
+    if (toggleButton && menu) {
+        const isExpanded = menu.classList.contains('expanded');
+        toggleButton.setAttribute('aria-expanded', isExpanded.toString());
+        toggleButton.setAttribute('aria-label', isExpanded ? 'Fechar Menu de Acessibilidade' : 'Abrir Menu de Acessibilidade');
+    }
+});
 </script>
+
 """
     safe_title = html.escape(pdf_filename_title if pdf_filename_title else "Documento")
     mathjax_config_head_merged = f"""
@@ -701,15 +1062,18 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
 {mathjax_config_head_merged}
 <body class="dark-mode"> <header role="banner"><h1>Documento Acessível: {safe_h1_title}</h1></header>
     <button id="accessibility-toggle" onclick="toggleAccessibilityMenu()" aria-label="Abrir Menu de Acessibilidade" aria-expanded="false">
-    <img src="https://cdn.userway.org/widgetapp/images/body_wh.svg" alt="" style="width: 130%; height: 130%;"/>
+        <img src="https://cdn.userway.org/widgetapp/images/body_wh.svg" alt="" style="width: 130%; height: 130%;"/>
     </button>
+
     <div id="accessibility-controls" class="collapsed" role="region" aria-labelledby="accessibility-menu-heading">
         <h2 id="accessibility-menu-heading" class="sr-only">Menu de Controles de Acessibilidade</h2>
+
         <div class="control-group">
-            <span>Tamanho da Fonte:</span>
+            <span>Tamanho da Fonte: <span id="fontSizeValue" aria-live="polite">16px</span></span>
             <button onclick="changeFontSize(-2)" aria-label="Diminuir tamanho da fonte">A-</button>
             <button onclick="changeFontSize(2)" aria-label="Aumentar tamanho da fonte">A+</button>
         </div>
+
         <div class="control-group">
             <label for="fontSelector">Fonte:</label>
             <select id="fontSelector" onchange="setFontFamily(this.value)" aria-label="Selecionar família da fonte">
@@ -719,19 +1083,45 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
                 <option value="Courier New">Courier New</option>
             </select>
         </div>
+
+        <div class="control-group">
+            <label for="themeSelector">Tema Visual:</label>
+            <select id="themeSelector" onchange="changeTheme(this.value)" aria-label="Selecionar tema visual">
+                <option value="normal">Modo Claro</option>
+                <option value="dark">Modo Escuro</option>
+                <option value="high-contrast">Alto Contraste</option>
+            </select>
+        </div>
         <div class="control-group">
             <span>Leitura em Voz Alta:</span>
             <button onclick="speakText()" aria-label="Ler ou continuar leitura">▶️ Ler/Continuar</button>
             <button onclick="pauseSpeech()" aria-label="Pausar leitura">⏸️ Pausar</button>
             <button onclick="stopSpeech()" aria-label="Parar leitura (Tecla Esc)">⏹️ Parar (Esc)</button>
         </div>
+
         <div class="control-group">
-            <label for="themeSelector">Tema Visual:</label>
-            <select id="themeSelector" onchange="changeTheme(this.value)" aria-label="Selecionar tema visual">
-                <option value="normal">Modo Claro</option><option value="dark">Modo Escuro</option>
-                <option value="high-contrast">Alto Contraste</option>
-            </select>
+            <span>Navegar no Texto:</span>
+            <button onclick="skipToPrevious()" aria-label="Ler segmento anterior">⏪ Anterior</button>
+            <button onclick="skipToNext()" aria-label="Ler próximo segmento">Próximo ⏩</button>
         </div>
+
+        <div class="control-group">
+            <label for="voiceSelector">Voz:</label>
+            <select id="voiceSelector" aria-label="Selecionar voz"></select>
+        </div>
+
+        <div class="control-group">
+            <label for="rateSlider">Velocidade:</label>
+            <input type="range" id="rateSlider" min="0.5" max="2" step="0.1" value="1" oninput="updateSliderLabels(); saveSpeechSettings();">
+            <span id="rateValue" aria-live="polite">1x</span>
+        </div>
+
+        <div class="control-group">
+            <label for="pitchSlider">Tom:</label>
+            <input type="range" id="pitchSlider" min="0" max="2" step="0.1" value="1" oninput="updateSliderLabels(); saveSpeechSettings();">
+            <span id="pitchValue" aria-live="polite">1</span>
+        </div>
+
     </div>
     <main id="main-content" role="main">
 """
@@ -752,12 +1142,12 @@ def create_merged_html_with_accessibility(content_list, output_path, pdf_filenam
         if html_body and base64_image and "[Descrição:" in html_body:
             safe_alt_text = html.escape(f"Imagem original da página {page_num_in_doc}")
             merged_html += f"""
-            <details class="original-page-viewer">
-                <summary>Ver Imagem da Página Original {page_num_in_doc}</summary>
-                <div style="text-align: center; padding: 10px;">
-                    <img src="data:image/png;base64,{base64_image}" alt="{safe_alt_text}" style="max-width: 100%; height: auto;">
-                </div>
-            </details>
+                <details class="original-page-viewer">
+                    <summary>Ver Imagem da Página Original {page_num_in_doc}</summary>
+                    <div style="text-align: center; padding: 10px;">
+                        <img src="data:image/png;base64,{base64_image}" alt="{safe_alt_text}" style="max-width: 100%; height: auto;" aria-hidden="true">
+                    </div>
+                </details>
             """
         merged_html += "\n</article>\n"
     merged_html += "\n    </main>\n</body>\n</html>"
@@ -775,31 +1165,27 @@ def process_pdf_thread(
         cancel_event, status_callback, completion_callback,
         password_request_callback_gui, progress_callback_gui
 ):
-    image_paths = [];
-    uploaded_files_map = {};
+    image_paths = []
+    uploaded_files_map = {}
     temp_image_dir = ""
-    generated_content_list_thread = []; # Stores dicts: {"page_num_in_doc": ..., "body": ..., "base64_image": ...}
+    generated_content_list_thread = []
 
-    # Enhanced progress callback to give more fine-grained updates
     def phase_progress_callback(step, total_in_phase, text_prefix):
-        overall_progress = 0;
-        overall_total = 100 # Assuming 100 as max for overall progress bar
-        # Define phases and their weight in overall progress
-        if "Convertendo" in text_prefix: # Phase 1: PDF to Images (e.g., 0-30%)
+        overall_progress = 0
+        overall_total = 100
+        if "Convertendo" in text_prefix:
             overall_progress = int((step / total_in_phase) * 30) if total_in_phase > 0 else 0
-        elif "Upload" in text_prefix: # Phase 2: Uploading (e.g., 30-60%)
+        elif "Upload" in text_prefix:
             overall_progress = 30 + int((step / total_in_phase) * 30) if total_in_phase > 0 else 30
-        elif "HTML" in text_prefix and "Gerando" in text_prefix: # Phase 3: Generating HTML (e.g., 60-90%)
+        elif "HTML" in text_prefix and "Gerando" in text_prefix:
             overall_progress = 60 + int((step / total_in_phase) * 30) if total_in_phase > 0 else 60
-        elif "Mesclando" in text_prefix or "Limpando" in text_prefix or "Concluíd" in text_prefix : # Phase 4: Merging/Cleaning (e.g., 90-100%)
+        elif "Mesclando" in text_prefix or "Limpando" in text_prefix or "Concluíd" in text_prefix:
             overall_progress = 90 + int((step / total_in_phase) * 10) if total_in_phase > 0 else 90
-
         progress_callback_gui(overall_progress, overall_total, f"{text_prefix} ({step}/{total_in_phase})")
 
-
     try:
-        status_callback("Iniciando processo...");
-        phase_progress_callback(0, 1, "Inicializando") # Initial progress update
+        status_callback("Iniciando processo...")
+        phase_progress_callback(0, 1, "Inicializando")
         script_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in locals() else os.getcwd()
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         pdf_basename_for_dir = re.sub(r'[^\w\-_\. ]', '_', os.path.splitext(os.path.basename(pdf_path))[0])
@@ -808,72 +1194,59 @@ def process_pdf_thread(
 
         api_key = os.environ.get(API_KEY_ENV_VAR)
         if not api_key: raise ValueError(f"Chave API '{API_KEY_ENV_VAR}' não encontrada nas variáveis de ambiente.")
-        genai.configure(api_key=api_key);
+        genai.configure(api_key=api_key)
         status_callback("Chave API Google AI configurada.")
 
-        # Get total pages for range parsing and initial encryption check
         total_doc_pages_for_range_parsing = 0
         try:
-            temp_doc = fitz.open(pdf_path) # Open once for metadata
+            temp_doc = fitz.open(pdf_path)
             total_doc_pages_for_range_parsing = temp_doc.page_count
-            is_encrypted_initial_check = temp_doc.is_encrypted # Check encryption status
+            is_encrypted_initial_check = temp_doc.is_encrypted
             temp_doc.close()
             if is_encrypted_initial_check: status_callback("  PDF parece protegido. Senha será solicitada se necessário.")
         except Exception as e:
             raise Exception(f"Falha ao ler metadados do PDF: {e}")
 
         selected_pages_0_indexed = parse_page_ranges(page_range_str, total_doc_pages_for_range_parsing)
-        if selected_pages_0_indexed is None: raise ValueError(f"Intervalo de páginas inválido: '{page_range_str}'. Verifique o formato (ex: 1-3,5,7-).")
-
+        if selected_pages_0_indexed is None: raise ValueError(f"Intervalo de páginas inválido: '{page_range_str}'.")
+        
         num_pages_initially_selected = len(selected_pages_0_indexed)
         if num_pages_initially_selected == 0:
-            if total_doc_pages_for_range_parsing == 0: raise ValueError("PDF está vazio ou não pôde ser lido. Nenhuma página para processar.")
-            if page_range_str.strip(): raise ValueError( # Only raise if user actually provided a range that yielded nothing
+            if total_doc_pages_for_range_parsing == 0: raise ValueError("PDF está vazio ou não pôde ser lido.")
+            if page_range_str.strip(): raise ValueError(
                 f"O intervalo de páginas '{page_range_str}' não resultou em páginas válidas para um PDF com {total_doc_pages_for_range_parsing} páginas.")
-            # If no range provided and PDF has pages, this shouldn't happen due to parse_page_ranges behavior.
-            # But as a safeguard:
-            raise ValueError("Nenhuma página selecionada para processar (verifique o PDF e o intervalo de páginas).")
+            raise ValueError("Nenhuma página selecionada para processar.")
 
         status_callback(
-            f"Páginas para converter (0-idx): {', '.join(map(str, [p+1 for p in selected_pages_0_indexed]))} ({num_pages_initially_selected} pág.)")
+            f"Páginas para converter (1-idx): {', '.join(map(str, [p+1 for p in selected_pages_0_indexed]))} ({num_pages_initially_selected} pág.)")
 
         image_paths = pdf_to_images_local(pdf_path, temp_image_dir, dpi, selected_pages_0_indexed, cancel_event,
                                           status_callback, password_request_callback_gui, phase_progress_callback)
         if cancel_event.is_set(): raise OperationCancelledError("Cancelado após conversão para imagem.")
-        if not image_paths: raise Exception("Falha crítica ao converter PDF para imagens. Nenhuma imagem foi gerada.")
-        # `image_paths` now contains paths to successfully converted images
+        if not image_paths: raise Exception("Falha crítica ao converter PDF para imagens.")
 
         uploaded_files_map = upload_to_gemini_file_api(image_paths, num_upload_workers, cancel_event, status_callback,
                                                        phase_progress_callback)
         if cancel_event.is_set(): raise OperationCancelledError("Cancelado após upload.")
-        if not uploaded_files_map: raise Exception("Falha crítica ao fazer upload de imagens para API Gemini. Nenhum arquivo foi carregado.")
-        # `uploaded_files_map` maps local image paths to their File API objects
+        if not uploaded_files_map: raise Exception("Falha crítica ao fazer upload de imagens para API Gemini.")
 
         num_files_successfully_uploaded = len(uploaded_files_map)
-        status_callback(f"Inicializando modelo Gemini: {selected_model_name}...")
-        model = genai.GenerativeModel(model_name=selected_model_name,
-                                      safety_settings={'HARM_CATEGORY_HARASSMENT': 'BLOCK_NONE', # Adjust as needed
-                                                       'HARM_CATEGORY_HATE_SPEECH': 'BLOCK_NONE',
-                                                       'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'BLOCK_NONE',
-                                                       'HARM_CATEGORY_DANGEROUS_CONTENT': 'BLOCK_NONE'})
-        status_callback(f"Modelo Gemini pronto. Gerando HTML para {num_files_successfully_uploaded} imagem(ns)...")
-
-        # Determine original page number from filename (e.g., "page_001.png" -> 1)
+        status_callback(f"Gerando HTML para {num_files_successfully_uploaded} imagem(ns) usando o modelo base '{selected_model_name}'...")
+        
         local_path_to_original_page_num = {
             img_path: int(m.group(1)) if (m := re.search(r"page_(\d+)\.\w+$", os.path.basename(img_path))) else -1
-            for img_path in uploaded_files_map.keys() # Only consider successfully uploaded images
+            for img_path in uploaded_files_map.keys()
         }
-        # Verify page number extraction
         for img_path, page_num in local_path_to_original_page_num.items():
             if page_num == -1: status_callback(f"Aviso: Falha ao determinar pág. original de {os.path.basename(img_path)}")
 
-
-        # Prepare tasks for HTML generation, ensuring we process in original page order
+        # --- Bloco de Geração de HTML com Lógica de Escalonamento ---
+        
+        # Preparar tarefas para geração HTML
         tasks_for_html_generation = []
-        # Sort by the extracted original page number to maintain document order
         sorted_uploaded_image_paths = sorted(
-            uploaded_files_map.keys(), # These are local paths
-            key=lambda x: local_path_to_original_page_num.get(x, float('inf')) # Sort by page number
+            uploaded_files_map.keys(),
+            key=lambda x: local_path_to_original_page_num.get(x, float('inf'))
         )
 
         for original_order_idx, local_img_path in enumerate(sorted_uploaded_image_paths):
@@ -882,17 +1255,20 @@ def process_pdf_thread(
                 status_callback(f"  Pulando {os.path.basename(local_img_path)} para geração HTML (pág. original não determinada).")
                 continue
 
-            file_api_object = uploaded_files_map.get(local_img_path) # Get the File API object
-            if not file_api_object: # Should not happen if logic is correct
+            file_api_object = uploaded_files_map.get(local_img_path)
+            if not file_api_object:
                 status_callback(f"  Pulando {os.path.basename(local_img_path)} (objeto da API não encontrado no mapa).")
                 continue
 
-            task_args = (model, file_api_object, os.path.basename(local_img_path), # Pass local filename
-                         local_img_path, # Pass full local path for reading dimensions/base64
-                         cancel_event, status_callback, page_num_in_doc, original_order_idx)
-            tasks_for_html_generation.append({'args': task_args, 'original_idx': original_order_idx})
+            task_args = (file_api_object, os.path.basename(local_img_path),
+                         local_img_path, cancel_event, status_callback, page_num_in_doc, original_order_idx)
+            tasks_for_html_generation.append({
+                'args': task_args,
+                'original_idx': original_order_idx,
+                'model_to_use': selected_model_name # Começa com o modelo padrão
+            })
 
-        temp_generated_html_results = [None] * len(tasks_for_html_generation) # Pre-allocate list for ordered results
+        temp_generated_html_results = [None] * len(tasks_for_html_generation)
         current_html_tasks_for_retry_phase = list(tasks_for_html_generation)
 
         for attempt in range(PHASE_MAX_RETRIES + 1):
@@ -905,44 +1281,41 @@ def process_pdf_thread(
             failed_tasks_for_next_round = []
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=num_generate_workers) as executor:
-                future_to_task_info_dict = { # Map future to original task info for tracking
-                    executor.submit(generate_html_for_image_task, *task_info['args']): task_info
+                future_to_task_info_dict = {
+                    executor.submit(generate_html_for_image_task, task_info['model_to_use'], *task_info['args']): task_info
                     for task_info in current_html_tasks_for_retry_phase
                 }
                 for future in concurrent.futures.as_completed(future_to_task_info_dict):
                     if cancel_event.is_set(): break
                     original_task_info = future_to_task_info_dict[future]
-                    idx_for_assignment = original_task_info['original_idx'] # Use original index for result placement
+                    idx_for_assignment = original_task_info['original_idx']
 
                     try:
-                        # Now expects (original_idx, page_num, html_body, base64_data)
-                        returned_task_idx, page_num_doc, html_body, base64_data = future.result()
-
-                        if returned_task_idx != idx_for_assignment: # Sanity check
-                            status_callback(
-                                f"ALERTA DE ÍNDICE: Mapeado: {idx_for_assignment}, Retornado pela Task: {returned_task_idx} para pág {page_num_doc}. USANDO ÍNDICE MAPEADO ({idx_for_assignment}).")
-
-                        if html_body: # If HTML was successfully generated
-                            if 0 <= idx_for_assignment < len(temp_generated_html_results): # Bounds check
-                                temp_generated_html_results[idx_for_assignment] = {
-                                    "page_num_in_doc": page_num_doc,
-                                    "body": html_body,
-                                    "base64_image": base64_data # Store base64 image data
-                                }
-                            else: # Should ideally not happen if original_order_idx is managed well
-                                status_callback(f"!! ERRO GRAVE DE ÍNDICE !! Tentativa de usar índice {idx_for_assignment}, mas tamanho da lista é {len(temp_generated_html_results)}. Pág: {page_num_doc}. Marcando task como falha.")
+                        returned_task_idx, page_num_doc, html_body, base64_data, finish_reason = future.result()
+                        
+                        if html_body: # Sucesso
+                            temp_generated_html_results[idx_for_assignment] = {
+                                "page_num_in_doc": page_num_doc,
+                                "body": html_body,
+                                "base64_image": base64_data
+                            }
+                        else: # Falha
+                            if finish_reason == FINISH_REASON_MAX_TOKENS:
+                                status_callback(f"  Falha por MAX_TOKENS na pág. {page_num_doc}. Escalando modelo para retentativa...")
+                                original_task_info['model_to_use'] = MODELO_ESCALONAMENTO
                                 failed_tasks_for_next_round.append(original_task_info)
-                        else: # HTML generation failed for this page
-                            status_callback(
-                                f"  HTML não gerado para pág. PDF {page_num_doc} (Índice Original: {idx_for_assignment}). Adicionando para retentativa de fase.")
-                            failed_tasks_for_next_round.append(original_task_info)
+                            else:
+                                status_callback(
+                                    f"  HTML não gerado para pág. PDF {page_num_doc}. Adicionando para retentativa de fase (Motivo: {finish_reason}).")
+                                failed_tasks_for_next_round.append(original_task_info)
+
                     except OperationCancelledError:
-                        status_callback(
-                            "  Geração HTML cancelada para uma página."); failed_tasks_for_next_round.append(
-                            original_task_info); break # Break from this loop on cancellation
+                        status_callback("  Geração HTML cancelada para uma página.")
+                        failed_tasks_for_next_round.append(original_task_info)
+                        break
                     except Exception as e:
                         status_callback(
-                            f"  Erro ao processar resultado HTML para pág. (índice mapeado {idx_for_assignment}), len(lista)={len(temp_generated_html_results)}: {type(e).__name__} - {e}")
+                            f"  Erro ao processar resultado HTML para pág. (índice mapeado {idx_for_assignment}): {type(e).__name__} - {e}")
                         failed_tasks_for_next_round.append(original_task_info)
                     finally:
                         completed_in_this_attempt += 1
@@ -951,20 +1324,17 @@ def process_pdf_thread(
             current_html_tasks_for_retry_phase = failed_tasks_for_next_round
             if not current_html_tasks_for_retry_phase or cancel_event.is_set(): break
 
-
         if cancel_event.is_set(): raise OperationCancelledError("Cancelado após geração HTML.")
-        # Filter out None results (for pages that might have consistently failed or were skipped)
         generated_content_list_thread = [res for res in temp_generated_html_results if res is not None]
 
         num_successfully_generated_html_pages = len(generated_content_list_thread)
-        total_pages_html_generation_attempted = len(tasks_for_html_generation) # Number of pages we tried to get HTML for
+        total_pages_html_generation_attempted = len(tasks_for_html_generation)
         is_partial_generation = num_successfully_generated_html_pages > 0 and num_successfully_generated_html_pages < total_pages_html_generation_attempted
 
-        if not generated_content_list_thread and total_pages_html_generation_attempted > 0 : # If we attempted but got nothing
+        if not generated_content_list_thread and total_pages_html_generation_attempted > 0:
             status_callback("AVISO: Nenhum conteúdo HTML foi gerado com sucesso após todas as tentativas.")
         status_callback(
             f"Geração HTML finalizada. {num_successfully_generated_html_pages}/{total_pages_html_generation_attempted} págs tentadas foram processadas com sucesso.")
-
 
         output_html_path_final = initial_output_html_path_base
         pdf_filename_for_html_title = os.path.splitext(os.path.basename(pdf_path))[0]
@@ -978,20 +1348,18 @@ def process_pdf_thread(
             output_html_path_final = os.path.join(path_dir, f"{base_name}_parcial_accessible{ext}")
             pdf_filename_for_html_title += " (Parcial)"
 
-
-        status_callback("Mesclando HTML...");
+        status_callback("Mesclando HTML...")
         phase_progress_callback(0, 1, "Mesclando HTML")
         success_merge = create_merged_html_with_accessibility(generated_content_list_thread, output_html_path_final,
                                                               pdf_filename_for_html_title)
 
-        if not success_merge and generated_content_list_thread: # If merge failed but there was content
+        if not success_merge and generated_content_list_thread:
             raise Exception("Falha ao criar arquivo HTML mesclado (havia conteúdo para mesclar).")
-        elif not generated_content_list_thread and not success_merge: # No content, so merge "failing" (not creating file) is expected
-            status_callback("Nenhum HTML para mesclar, arquivo de saída pode não ter sido criado ou pode estar vazio.")
+        elif not generated_content_list_thread and not success_merge:
+            status_callback("Nenhum HTML para mesclar, arquivo de saída pode não ter sido criado.")
 
-        status_callback(f"HTML salvo em: {output_html_path_final}");
+        status_callback(f"HTML salvo em: {output_html_path_final}")
         phase_progress_callback(1, 1, "HTML Mesclado")
-
 
         final_message = f"Sucesso! HTML acessível salvo em:\n{output_html_path_final}"
         if is_partial_generation:
@@ -1001,22 +1369,24 @@ def process_pdf_thread(
 
         completion_callback(True, final_message)
 
-    except ValueError as ve: # Configuration or input errors
-        status_callback(f"Erro de Entrada/Configuração: {ve}"); completion_callback(False, f"Erro de Entrada/Configuração: {ve}")
+    except ValueError as ve:
+        status_callback(f"Erro de Entrada/Configuração: {ve}")
+        completion_callback(False, f"Erro de Entrada/Configuração: {ve}")
     except OperationCancelledError:
-        status_callback("Processo cancelado pelo usuário."); completion_callback(False, "Processo cancelado pelo usuário.")
-    except google_exceptions.ResourceExhausted as e: # API quota issues
-        status_callback(f"Erro API (Limite de Taxa/Recurso Esgotado): {e}."); completion_callback(False, f"Erro da API (Limite de Taxa/Recurso Esgotado): {e}. Tente novamente mais tarde ou verifique suas cotas.")
-    except Exception as e: # Catch-all for other unexpected errors
+        status_callback("Processo cancelado pelo usuário.")
+        completion_callback(False, "Processo cancelado pelo usuário.")
+    except google_exceptions.ResourceExhausted as e:
+        status_callback(f"Erro API (Limite de Taxa/Recurso Esgotado): {e}.")
+        completion_callback(False, f"Erro da API (Limite de Taxa/Recurso Esgotado): {e}. Tente novamente mais tarde ou verifique suas cotas.")
+    except Exception as e:
         import traceback
         error_details = f"Erro Inesperado: {type(e).__name__} - {e}\n{traceback.format_exc()}"
-        status_callback(error_details);
+        status_callback(error_details)
         completion_callback(False, f"Erro Inesperado durante o processamento: {e}")
     finally:
-        status_callback("Iniciando limpeza final...");
+        status_callback("Iniciando limpeza final...")
         phase_progress_callback(0, 1, "Limpando arquivos")
-        # Clean local images
-        if image_paths: # Check if image_paths was initialized and populated
+        if image_paths:
             cleaned_local = 0
             for img_path in image_paths:
                 try:
@@ -1025,30 +1395,30 @@ def process_pdf_thread(
                     status_callback(f"  Aviso: Falha ao remover imagem local {os.path.basename(img_path)}: {e_rem}")
             status_callback(f"  {cleaned_local} arquivos de imagem locais limpos.")
 
-        # Clean temporary directory
         if temp_image_dir and os.path.exists(temp_image_dir):
             try:
-                shutil.rmtree(temp_image_dir); status_callback(f"  Diretório temporário removido: {temp_image_dir}")
-            except OSError as e_rmdir: # More specific exception for rmtree issues
+                shutil.rmtree(temp_image_dir)
+                status_callback(f"  Diretório temporário removido: {temp_image_dir}")
+            except OSError as e_rmdir:
                 status_callback(f"  Aviso: Falha ao remover diretório temporário {temp_image_dir}: {e_rmdir}")
 
-        # Clean uploaded files from Gemini API
-        if uploaded_files_map: # Check if map exists and is not empty
+        if uploaded_files_map:
             deleted_api = 0
             status_callback(f"  Limpando {len(uploaded_files_map)} arquivos da API Gemini...")
             for file_obj in uploaded_files_map.values():
-                if file_obj and hasattr(file_obj, 'name'): # Ensure file_obj is valid
+                if file_obj and hasattr(file_obj, 'name'):
                     try:
-                        genai.delete_file(file_obj.name); deleted_api += 1; time.sleep(0.2) # Small delay
+                        genai.delete_file(file_obj.name)
+                        deleted_api += 1
+                        time.sleep(0.2)
                     except Exception as e_del_api:
-                         status_callback(f"  Aviso: Falha ao deletar arquivo da API {file_obj.name}: {e_del_api}")
+                        status_callback(f"  Aviso: Falha ao deletar arquivo da API {file_obj.name}: {e_del_api}")
             status_callback(f"  {deleted_api} arquivos da API Gemini limpos.")
         else:
-            status_callback("  Nenhum arquivo para limpar da API Gemini (mapa de upload vazio ou não inicializado).")
+            status_callback("  Nenhum arquivo para limpar da API Gemini.")
 
-        status_callback("Limpeza finalizada.");
-        phase_progress_callback(1, 1, "Limpeza Concluída") # Final progress update
-
+        status_callback("Limpeza finalizada.")
+        phase_progress_callback(1, 1, "Limpeza Concluída")
 
 class OldSchoolApp:
     def __init__(self, root_window):
@@ -1141,7 +1511,7 @@ class OldSchoolApp:
         dpi_frame = ttk.Frame(settings_col1);
         dpi_frame.pack(fill=tk.X, pady=2, anchor='w') # Anchor to west
         ttk.Label(dpi_frame, text="DPI Imagem:").pack(side=tk.LEFT, anchor='w');
-        self.dpi_var = tk.StringVar(value="150")
+        self.dpi_var = tk.StringVar(value="100")
         self.dpi_entry = ttk.Entry(dpi_frame, textvariable=self.dpi_var, width=5);
         self.dpi_entry.pack(side=tk.LEFT, padx=(5, 0), anchor='w')
 
