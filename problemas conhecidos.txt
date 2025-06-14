@@ -1,3 +1,1 @@
-1 - a cor da descrição das imagens não está mudando de cor para verde
-2 - arquivos grandes ficam lagados (tentar não renderizar tudo de uma vez, especialmente o MathJax)
-3 - Equações gigantes saindo da tela no modo retrato do celular
+1 - arquivos grandes ficam lagados (tentar não renderizar tudo de uma vez, especialmente o MathJax)
