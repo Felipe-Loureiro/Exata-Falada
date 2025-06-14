@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF -> HTML Acessível (Gemini AI)</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>PDF para HTML Acessível</h1>
+            <p>Use a IA do Gemini para converter seus PDFs</p>
+        </header>
+
+        {% if not api_key_set %}
+        <div class="alert alert-danger">
+            <strong>AVISO:</strong> A variável de ambiente <code>GOOGLE_API_KEY</code> não foi configurada. A aplicação não funcionará.
+        </div>
+        {% endif %}
+
+        <form id="conversion-form" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="pdf_file">Selecione o arquivo PDF:</label>
+                <input type="file" id="pdf_file" name="pdf_file" accept=".pdf" required>
+            </div>
+
+            <div class="settings-grid">
+                <div class="form-group">
+                    <label for="dpi">DPI Imagem:</label>
+                    <input type="number" id="dpi" name="dpi" value="100" min="72" max="600">
+                </div>
+                <div class="form-group">
+                    <label for="page_range">Páginas (ex: 1-3,5):</label>
+                    <input type="text" id="page_range" name="page_range" placeholder="Todas">
+                </div>
+                 <div class="form-group">
+                    <label for="model">Modelo Gemini:</label>
+                    <select id="model" name="model">
+                        {% for model in models %}
+                            <option value="{{ model }}" {% if model == default_model %}selected{% endif %}>{{ model }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="upload_workers">Upload Workers:</label>
+                    <input type="number" id="upload_workers" name="upload_workers" value="10" min="1" max="50">
+                </div>
+                <div class="form-group">
+                    <label for="generate_workers">Generate Workers:</label>
+                    <input type="number" id="generate_workers" name="generate_workers" value="5" min="1" max="50">
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" id="submit-btn" class="btn btn-primary">Converter para HTML</button>
+                <button type="button" id="cancel-btn" class="btn btn-danger" style="display: none;">Cancelar</button>
+            </div>
+        </form>
+
+        <div id="progress-section" style="display: none;">
+            <h2 id="status-text">Processando...</h2>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progress-bar" style="width: 0%;">0%</div>
+            </div>
+            <div class="log-container">
+                <h3>Log de Processamento:</h3>
+                <pre id="log-output"></pre>
+            </div>
+        </div>
+
+        <div id="result-section" class="alert" style="display: none;"></div>
+
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

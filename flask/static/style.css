@@ -1,0 +1,142 @@
+body {
+    background-color: #000;
+    color: #00FF00;
+    font-family: 'Courier New', Courier, monospace;
+    margin: 0;
+    padding: 20px;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    border: 1px solid #00FF00;
+    padding: 20px;
+    background-color: #0A0A0A;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 20px;
+    border-bottom: 1px dashed #00FF00;
+    padding-bottom: 15px;
+}
+
+h1, h2, h3 {
+    color: #00FF00;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+input[type="text"], input[type="number"], select, input[type="file"] {
+    background-color: #181818;
+    color: #00FF00;
+    border: 1px solid #00FF00;
+    padding: 8px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+input::placeholder {
+    color: #009900;
+}
+
+input[type="file"]::file-selector-button {
+    background-color: #222;
+    color: #00FF00;
+    border: 1px solid #00FF00;
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.form-actions {
+    text-align: center;
+}
+
+.btn {
+    padding: 10px 20px;
+    border: 1px solid #00FF00;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+}
+
+.btn-primary {
+    background-color: #005c00;
+    color: #fff;
+}
+.btn-primary:hover {
+    background-color: #008f00;
+}
+
+.btn-danger {
+    background-color: #8b0000;
+    color: #fff;
+}
+.btn-danger:hover {
+    background-color: #b22222;
+}
+
+#progress-section {
+    margin-top: 20px;
+}
+
+.progress-bar-container {
+    width: 100%;
+    background-color: #181818;
+    border: 1px solid #00FF00;
+    margin-top: 10px;
+}
+
+.progress-bar {
+    width: 0%;
+    background-color: #00FF00;
+    color: #000;
+    text-align: center;
+    line-height: 20px;
+    font-weight: bold;
+    transition: width 0.4s ease;
+}
+
+.log-container {
+    margin-top: 20px;
+}
+
+#log-output {
+    background-color: #050505;
+    border: 1px solid #009900;
+    padding: 10px;
+    height: 200px;
+    overflow-y: scroll;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.alert {
+    padding: 15px;
+    margin-top: 20px;
+    border: 1px solid;
+}
+.alert-success {
+    background-color: #003300;
+    border-color: #00FF00;
+    color: #00FF00;
+}
+.alert-danger {
+    background-color: #330000;
+    border-color: #FF0000;
+    color: #FF0000;
+}
