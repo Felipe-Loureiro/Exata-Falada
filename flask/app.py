@@ -5,15 +5,21 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 from processing import process_pdf_web, AVAILABLE_GEMINI_MODELS, DEFAULT_GEMINI_MODEL, API_KEY_ENV_VAR
 
-# --- Configuração do Flask ---
-UPLOAD_FOLDER = 'uploads'
-OUTPUT_FOLDER = 'outputs'
-ALLOWED_EXTENSIONS = {'pdf'}
+# --- Construção de Caminhos Absolutos ---
+# Pega o diretório onde o arquivo app.py está localizado
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# --- Configuração do Flask ---
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
+# Usa os caminhos absolutos para definir as pastas
+app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'uploads')
+app.config['OUTPUT_FOLDER'] = os.path.join(BASE_DIR, 'temp_outputs')
+
+# Garante que as pastas existam no servidor
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # Limite de 50 MB para upload
+ALLOWED_EXTENSIONS = {'pdf'}
 
 # --- Armazenamento de Tarefas em Memória ---
 # ATENÇÃO: Este dicionário será resetado se o servidor for reiniciado.
