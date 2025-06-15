@@ -15,8 +15,8 @@ OUTPUT_FOLDER = 'outputs'
 ALLOWED_EXTENSIONS = {'pdf'}
 app = Flask(__name__)
 # Usa os caminhos absolutos para definir as pastas
-app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'uploads')
-app.config['OUTPUT_FOLDER'] = os.path.join(BASE_DIR, 'temp_outputs')
+app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, UPLOAD_FOLDER)
+app.config['OUTPUT_FOLDER'] = os.path.join(BASE_DIR, OUTPUT_FOLDER)
 
 # Garante que as pastas existam no servidor
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
