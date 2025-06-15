@@ -1,1 +1,0 @@
-1 - arquivos grandes ficam lagados (tentar não renderizar tudo de uma vez, especialmente o MathJax)

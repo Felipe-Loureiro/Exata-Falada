@@ -1,1 +1,4 @@
-/flask/.env
+.env
+/outputs
+/temp_processing
+/uploads
