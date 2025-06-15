@@ -10,6 +10,9 @@ from processing import process_pdf_web, AVAILABLE_GEMINI_MODELS, DEFAULT_GEMINI_
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --- Configuração do Flask ---
+UPLOAD_FOLDER = 'uploads'
+OUTPUT_FOLDER = 'outputs'
+ALLOWED_EXTENSIONS = {'pdf'}
 app = Flask(__name__)
 # Usa os caminhos absolutos para definir as pastas
 app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'uploads')
@@ -19,7 +22,6 @@ app.config['OUTPUT_FOLDER'] = os.path.join(BASE_DIR, 'temp_outputs')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # Limite de 50 MB para upload
-ALLOWED_EXTENSIONS = {'pdf'}
 
 # --- Armazenamento de Tarefas em Memória ---
 # ATENÇÃO: Este dicionário será resetado se o servidor for reiniciado.
