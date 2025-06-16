@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.is_complete) {
                     stopPolling();
                     if (data.success) {
-                        const downloadLink = `<a href="/download/${data.output_filename}" target="_blank" class="download-link">Clique aqui para baixar o HTML</a>`;
+                        const downloadLink = `<a href="/download/${currentTaskId}" target="_blank" class="download-link">Clique aqui para baixar o HTML</a>`;
                         showResult(true, `Conversão concluída! ${downloadLink}`);
                     } else {
                         showResult(false, `Falha na conversão. Verifique o log para detalhes.`);

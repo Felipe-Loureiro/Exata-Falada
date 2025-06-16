@@ -12,6 +12,12 @@ import shutil  # Para rmtree
 import concurrent.futures  # Para processamento concorrente
 import base64  # For embedding images
 import html  # For escaping HTML special characters in title
+import tempfile # Para gerenciar arquivos e diretórios temporários
+import boto3   # Importa boto3 aqui também
+from botocore.exceptions import ClientError
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- Configuração Inicial ---
 API_KEY_ENV_VAR = "GOOGLE_API_KEY"
@@ -31,6 +37,9 @@ PHASE_MAX_RETRIES = 1
 
 DEFAULT_UPLOAD_MAX_WORKERS = 10
 DEFAULT_GENERATE_MAX_WORKERS = 5
+
+# Modo de Armazenamento -> LOCAL ou S3
+MODE = "LOCAL"
 
 
 class OperationCancelledError(Exception):
@@ -483,7 +492,7 @@ def generate_html_for_image_task(model_name, file_object_from_api, page_filename
     return original_page_order_index, current_page_num_in_doc, html_body, base64_image_data, final_finish_reason
 
 
-def create_merged_html_with_accessibility(content_list, output_path, pdf_filename_title):
+def create_merged_html_with_accessibility(content_list, pdf_filename_title, output_path=None, s3_client=None, s3_bucket=None, output_s3_key=None):
     if not content_list: return False
 
     accessibility_css = """
@@ -1162,22 +1171,47 @@ document.addEventListener('DOMContentLoaded', () => {
             """
         merged_html += "\n</article>\n"
     merged_html += "\n    </main>\n</body>\n</html>"
-    try:
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(merged_html)
-        return True
-    except Exception as e:
-        raise IOError(f"Falha ao escrever arquivo HTML: {e}")
+
+    if MODE == "LOCAL":
+        try:
+            print(output_path)
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(merged_html)
+            return True
+        except Exception as e:
+            raise IOError(f"Falha ao escrever arquivo HTML: {e}")
+    elif MODE == "S3":
+        try:
+            # Converte a string HTML para bytes
+            html_bytes = merged_html.encode('utf-8')
+            # Faz o upload dos bytes diretamente para o S3
+            s3_client.put_object(
+                Bucket=s3_bucket,
+                Key=output_s3_key,
+                Body=html_bytes,
+                ContentType='text/html',
+                ContentEncoding='utf-8'
+            )
+            return True
+        except ClientError as e:
+            # Lança um erro que será capturado pela função principal
+            raise IOError(f"Falha ao fazer upload do arquivo HTML para o S3: {e}")
+    return None
 
 
 def process_pdf_web(
-        pdf_path, initial_output_html_path_base, dpi, page_range_str, selected_model_name,
+        dpi, page_range_str, selected_model_name,
         num_upload_workers, num_generate_workers,
-        cancel_event, status_callback, completion_callback, progress_callback
+        cancel_event, status_callback, completion_callback, progress_callback,
+        s3_bucket=None, s3_pdf_object_name=None, output_s3_key=None, pdf_path=None, initial_output_html_path_base=None
 ):
-    image_paths = []
+    if MODE == "LOCAL":
+        image_paths = []
+        temp_image_dir = ""
+    elif MODE == "S3":
+        s3_client = boto3.client('s3', region_name=os.environ.get('S3_REGION'))
+
     uploaded_files_map = {}
-    temp_image_dir = ""
 
     def phase_progress_callback(step, total, text_prefix):
         phase_map = {
@@ -1196,7 +1230,15 @@ def process_pdf_web(
         status_callback("Iniciando processo...")
         progress_callback(0, 100, "Inicializando")
 
-        pdf_basename = os.path.splitext(os.path.basename(pdf_path))[0]
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf_file:
+            if MODE == "LOCAL":
+                pdf_basename = os.path.splitext(os.path.basename(pdf_path))[0]
+            elif MODE == "S3":
+                status_callback(f"Baixando PDF do armazenamento: {s3_pdf_object_name}")
+                s3_client.download_fileobj(s3_bucket, s3_pdf_object_name, tmp_pdf_file)
+                pdf_path = tmp_pdf_file.name  # Agora temos um caminho local temporário
+                pdf_basename = os.path.splitext(os.path.basename(s3_pdf_object_name))[0]
+
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         temp_image_dir = os.path.join('temp_processing', f"{pdf_basename}_{timestamp}")
         os.makedirs(temp_image_dir, exist_ok=True)
@@ -1324,12 +1366,18 @@ def process_pdf_web(
 
         status_callback("Mesclando HTML...")
         phase_progress_callback(0, 1, "Mesclando")
-        success_merge = create_merged_html_with_accessibility(generated_content_list_thread,
-                                                              initial_output_html_path_base, pdf_basename)
+
+        if MODE == "LOCAL":
+            success_merge = create_merged_html_with_accessibility(generated_content_list_thread, pdf_basename, output_path=initial_output_html_path_base)
+        elif MODE == "S3":
+            success_merge = create_merged_html_with_accessibility(generated_content_list_thread, pdf_basename, s3_client=s3_client,s3_bucket=s3_bucket, output_s3_key=output_s3_key)
         if not success_merge:
             raise Exception("Falha ao criar arquivo HTML mesclado.")
 
-        completion_callback(True, initial_output_html_path_base)
+        if MODE == "LOCAL":
+            completion_callback(True, initial_output_html_path_base)
+        elif MODE == "S3":
+            completion_callback(True, output_s3_key)
 
     except Exception as e:
         import traceback
