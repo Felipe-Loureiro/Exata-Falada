@@ -15,6 +15,7 @@ import html  # For escaping HTML special characters in title
 import tempfile # Para gerenciar arquivos e diretórios temporários
 import boto3   # Importa boto3 aqui também
 from botocore.exceptions import ClientError
+from config import MODE
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -37,9 +38,6 @@ PHASE_MAX_RETRIES = 1
 
 DEFAULT_UPLOAD_MAX_WORKERS = 10
 DEFAULT_GENERATE_MAX_WORKERS = 5
-
-# Modo de Armazenamento -> LOCAL ou S3
-MODE = "LOCAL"
 
 
 class OperationCancelledError(Exception):

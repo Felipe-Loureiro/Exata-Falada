@@ -22,10 +22,18 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        // 2. Verificar o tamanho do arquivo (limite de 10MB, por exemplo)
+        const file = fileInput.files[0];
+        const maxSize = 50 * 1024 * 1024; // 50MB em bytes
+        if (file.size > maxSize) {
+            showResult(false, 'O arquivo selecionado é muito grande. O tamanho máximo permitido é 50MB.');
+            return;
+        }
+
         resetUI();
         setControls(false); // Desabilita controles
 
-        // 2. Construir o FormData explicitamente
+        // 3. Construir o FormData explicitamente
         // Esta é a parte mais importante da correção.
         const formData = new FormData();
         formData.append('pdf_file', fileInput.files[0]);
