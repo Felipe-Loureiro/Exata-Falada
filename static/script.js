@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const statusText = document.getElementById('status-text');
     const logOutput = document.getElementById('log-output');
     const fileInput = document.getElementById('pdf_file');
+    const devBtn = document.getElementById('dev-unlock-btn');
 
     let currentTaskId = null;
     let pollingInterval = null;
@@ -138,7 +139,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function setControls(enabled) {
         submitBtn.disabled = !enabled;
-        form.querySelectorAll('input, select').forEach(el => el.disabled = !enabled);
+
+        if (enabled) {
+            form.querySelectorAll('input:not([data-role="dev"]), select:not([data-role="dev"])').forEach(el => el.disabled = !enabled);
+        } else {
+            form.querySelectorAll('input, select').forEach(el => el.disabled = !enabled);
+        }
 
         if (enabled) {
             submitBtn.style.display = 'inline-block';
@@ -156,4 +162,19 @@ document.addEventListener('DOMContentLoaded', function() {
         resultSection.className = success ? 'alert alert-success' : 'alert alert-danger';
         resultSection.innerHTML = message;
     }
+
+    devBtn.addEventListener('click', function () {
+    const senha = prompt('Digite a senha de desenvolvedor:');
+
+    const senhaCorreta = 'exata';
+
+    if (senha === senhaCorreta) {
+        document.querySelectorAll('[data-role="dev"]').forEach(el => {
+            el.disabled = false;
+        });
+        //alert('Modo desenvolvedor ativado.');
+    } else {
+        //alert('Senha incorreta.');
+    }
+    });
 });
