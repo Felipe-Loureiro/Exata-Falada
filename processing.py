@@ -731,8 +731,8 @@ function populateVoiceList() {
     voiceSelector.innerHTML = '';
 
     const ptVoices = voices.filter(voice => voice.lang.startsWith('pt'));
-    //const otherVoices = voices.filter(voice => !voice.lang.startsWith('pt'));
-    const sortedVoices = [...ptVoices];
+    const enVoices = voices.filter(voice => voice.lang.replace("_","-").startsWith('en-US'));
+    const sortedVoices = [...ptVoices, ...enVoices];
 
     sortedVoices.forEach(voice => {
         const option = document.createElement('option');
