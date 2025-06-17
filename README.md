@@ -2,8 +2,8 @@
 
 ## Problemas Conhecidos:
 * Arquivos grandes ficam lagados (tentar não renderizar tudo de uma vez, especialmente o MathJax)
-* 95% 
-
+* Bug dos 95%
+* PDF com senha não funciona
 
 ## Chaves do .env:
 * GOOGLE_API_KEY
