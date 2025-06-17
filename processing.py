@@ -298,6 +298,7 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
     * Do NOT paraphrase, reorder, or 'correct' the text. Reproduce it verbatim.
     * Preserve paragraph structure where possible.
     * **Omit standalone page numbers** that typically appear at the very top or bottom of a page, unless they are part of a sentence or reference.
+    * **CRITICAL: In case of blank pages, output only the text "Página em branco" (without quotes).
 
 2.  **Web Links (URLs):**
     * Identify all web addresses (URLs, links) in the text (e.g., starting with `http://`, `https://`, `www.`).
