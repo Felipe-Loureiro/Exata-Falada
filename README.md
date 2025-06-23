@@ -2,7 +2,6 @@
 
 ## Problemas Conhecidos:
 * Arquivos grandes ficam lagados (tentar não renderizar tudo de uma vez, especialmente o MathJax)
-* Bug dos 95%
 * PDF com senha não funciona
 
 ## Chaves do .env:

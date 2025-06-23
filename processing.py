@@ -1204,6 +1204,9 @@ def process_pdf_web(
         cancel_event, status_callback, completion_callback, progress_callback,
         s3_bucket=None, s3_pdf_object_name=None, output_s3_key=None, pdf_path=None, initial_output_html_path_base=None
 ):
+    success = False
+    result_message = "Processo iniciado mas não concluído."
+
     if MODE == "LOCAL":
         image_paths = []
         temp_image_dir = ""
@@ -1374,16 +1377,18 @@ def process_pdf_web(
         if not success_merge:
             raise Exception("Falha ao criar arquivo HTML mesclado.")
 
+        success = True
         if MODE == "LOCAL":
-            completion_callback(True, initial_output_html_path_base)
+            result_message = initial_output_html_path_base
         elif MODE == "S3":
-            completion_callback(True, output_s3_key)
+            result_message = output_s3_key
 
     except Exception as e:
         import traceback
         error_details = f"Erro: {type(e).__name__} - {e}\n{traceback.format_exc()}"
         status_callback(error_details)
-        completion_callback(False, str(e))
+        success = False
+        result_message = str(e)
     finally:
         try:
             status_callback("Iniciando limpeza final de recursos...")
@@ -1420,3 +1425,5 @@ def process_pdf_web(
 
         except Exception as e:
             status_callback(f"Erro durante a limpeza: {e}")
+
+        completion_callback(success, result_message)
