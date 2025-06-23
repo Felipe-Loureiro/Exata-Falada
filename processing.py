@@ -1229,13 +1229,14 @@ def process_pdf_web(
         status_callback("Iniciando processo...")
         progress_callback(0, 100, "Inicializando")
 
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf_file:
-            if MODE == "LOCAL":
-                pdf_basename = os.path.splitext(os.path.basename(pdf_path))[0]
-            elif MODE == "S3":
+        if MODE == "LOCAL":
+            pdf_basename = os.path.splitext(os.path.basename(pdf_path))[0]
+        elif MODE == "S3":
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf_file:
                 status_callback(f"Baixando PDF do armazenamento: {s3_pdf_object_name}")
                 s3_client.download_fileobj(s3_bucket, s3_pdf_object_name, tmp_pdf_file)
                 pdf_path = tmp_pdf_file.name  # Agora temos um caminho local temporário
+                tmp_pdf_path = tmp_pdf_file.name
                 pdf_basename = os.path.splitext(os.path.basename(s3_pdf_object_name))[0]
 
         timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -1384,24 +1385,38 @@ def process_pdf_web(
         status_callback(error_details)
         completion_callback(False, str(e))
     finally:
-        status_callback("Iniciando limpeza final de recursos...")
-        phase_progress_callback(0, 1, "Limpando")
-        if temp_image_dir and os.path.exists(temp_image_dir):
-            try:
-                shutil.rmtree(temp_image_dir)
-                status_callback(f"  Diretório temporário removido.")
-            except Exception as e_rm:
-                status_callback(f"  Aviso: Falha ao remover diretório temporário: {e_rm}")
+        try:
+            status_callback("Iniciando limpeza final de recursos...")
+            phase_progress_callback(0, 1, "Limpando")
 
-        if uploaded_files_map:
-            status_callback(f"  Limpando {len(uploaded_files_map)} arquivos da API...")
-            for file_obj in uploaded_files_map.values():
+            if MODE == "S3":
+                if os.path.exists(tmp_pdf_path):
+                    try:
+                        os.remove(tmp_pdf_path)
+                        status_callback(f"  Arquivo temporário PDF removido.")
+                    except Exception as e_rm:
+                        status_callback(f"  Aviso: Falha ao remover arquivo temporário PDF: {e_rm}")
+
+            if temp_image_dir and os.path.exists(temp_image_dir):
                 try:
-                    # Adicionado um pequeno delay para não sobrecarregar a API de delete
-                    time.sleep(0.1)
-                    genai.delete_file(file_obj.name)
-                except Exception as e_del:
-                    status_callback(f"  Aviso: Falha ao deletar arquivo da API {file_obj.name}: {e_del}")
+                    shutil.rmtree(temp_image_dir)
+                    status_callback(f"  Diretório temporário removido.")
+                except Exception as e_rm:
+                    status_callback(f"  Aviso: Falha ao remover diretório temporário: {e_rm}")
 
-        phase_progress_callback(1, 1, "Limpando")
-        status_callback("Limpeza finalizada.")
+            if uploaded_files_map:
+                status_callback(f"  Limpando {len(uploaded_files_map)} arquivos da API...")
+                for file_obj in uploaded_files_map.values():
+                    try:
+                        # Adicionado um pequeno delay para não sobrecarregar a API de delete
+                        time.sleep(0.1)
+                        genai.delete_file(file_obj.name)
+                        status_callback(f"    Arquivo API limpo: {file_obj.name}")
+                    except Exception as e_del:
+                        status_callback(f"  Aviso: Falha ao deletar arquivo da API {file_obj.name}: {e_del}")
+
+            phase_progress_callback(1, 1, "Limpando")
+            status_callback("Limpeza finalizada.")
+
+        except Exception as e:
+            status_callback(f"Erro durante a limpeza: {e}")
