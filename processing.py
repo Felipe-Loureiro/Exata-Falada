@@ -1198,6 +1198,27 @@ document.addEventListener('DOMContentLoaded', () => {
     return None
 
 
+def cleanup_api_files(files_to_delete, status_callback_func):
+    """Executa a limpeza dos arquivos da API em segundo plano."""
+    if not files_to_delete:
+        return
+
+    num_files = len(files_to_delete)
+    status_callback_func(f"  Iniciando limpeza assíncrona de {num_files} arquivos da API...")
+
+    for i, file_obj in enumerate(files_to_delete.values()):
+        try:
+            # Adicionado um pequeno delay para não sobrecarregar a API de delete
+            time.sleep(0.1)
+            genai.delete_file(file_obj.name)
+            # Log opcional para acompanhar o progresso da limpeza em segundo plano
+            # status_callback_func(f"  Limpeza assíncrona ({i+1}/{num_files}): {file_obj.name} removido.")
+            # print(f"  Limpeza assíncrona ({i+1}/{num_files}): {file_obj.name} removido.")
+        except Exception as e_del:
+            status_callback_func(f"  AVISO: Falha ao deletar arquivo da API {file_obj.name} em segundo plano: {e_del}")
+
+    status_callback_func("Limpeza assíncrona de arquivos da API finalizada.")
+
 def process_pdf_web(
         dpi, page_range_str, selected_model_name,
         num_upload_workers, num_generate_workers,
@@ -1409,16 +1430,14 @@ def process_pdf_web(
                 except Exception as e_rm:
                     status_callback(f"  Aviso: Falha ao remover diretório temporário: {e_rm}")
 
+            # Limpeza da API em uma nova thread
             if uploaded_files_map:
-                status_callback(f"  Limpando {len(uploaded_files_map)} arquivos da API...")
-                for file_obj in uploaded_files_map.values():
-                    try:
-                        # Adicionado um pequeno delay para não sobrecarregar a API de delete
-                        time.sleep(0.1)
-                        genai.delete_file(file_obj.name)
-                        status_callback(f"    Arquivo API limpo: {file_obj.name}")
-                    except Exception as e_del:
-                        status_callback(f"  Aviso: Falha ao deletar arquivo da API {file_obj.name}: {e_del}")
+                cleanup_thread = threading.Thread(
+                    target=cleanup_api_files,
+                    args=(dict(uploaded_files_map), status_callback)  # Passa uma cópia do dict
+                )
+                cleanup_thread.daemon = True  # Permite que o programa principal saia mesmo que a thread não termine
+                cleanup_thread.start()
 
             phase_progress_callback(1, 1, "Limpando")
             status_callback("Limpeza finalizada.")
