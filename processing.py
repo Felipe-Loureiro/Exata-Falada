@@ -823,16 +823,48 @@ function speakText() {
         return;
     }
 
-    // Se a fila está vazia, cria uma nova
-    if (speechQueue.length === 0) {
-        let rootNode;
-        const selectedText = window.getSelection().toString().trim();
-        if (selectedText) {
-            speechQueue = [{ text: "Texto selecionado: " + selectedText, element: null }];
-        } else {
-            rootNode = document.getElementById('main-content') || document.body;
-            speechQueue = extractContentWithSemantics(rootNode);
+    // Se a fila já existe, não faz nada (para evitar recriar ao clicar play várias vezes)
+    if (speechQueue.length > 0) {
+        // Se a fala terminou completamente, permite reiniciar
+        if (currentSegmentIndex < speechQueue.length) {
+            playQueue();
+            return;
         }
+    }
+    
+    // Limpa a fila e o índice para uma nova leitura
+    speechQueue = [];
+    currentSegmentIndex = 0;
+
+    const selection = window.getSelection();
+    const selectedText = selection.toString().trim();
+
+    if (selectedText && selection.rangeCount > 0) {
+        // 1. Pega o intervalo (range) da seleção do usuário.
+        const range = selection.getRangeAt(0);
+        
+        // 2. Clona o conteúdo DENTRO do intervalo para um DocumentFragment.
+        //    Isso cria uma cópia em memória que mantém toda a estrutura HTML (tags, atributos, etc.).
+        const selectedFragment = range.cloneContents();
+
+        // 3. AGORA SIM: Passamos esse fragmento para a sua função inteligente,
+        //    que saberá como filtrar os elementos com aria-hidden.
+        speechQueue = extractContentWithSemantics(selectedFragment);
+
+        // Opcional: Adicionar um prefixo para deixar claro que é um texto selecionado.
+        if (speechQueue.length > 0) {
+            speechQueue[0].text = "Texto selecionado: " + speechQueue[0].text;
+        }
+
+    } else {
+        // Este comportamento já estava correto: ler o conteúdo principal.
+        const rootNode = document.getElementById('main-content') || document.body;
+        speechQueue = extractContentWithSemantics(rootNode);
+    }
+
+    // Se nada foi encontrado para falar, não faz nada.
+    if (speechQueue.length === 0) {
+        return;
     }
 
     // Define o ponto de partida e inicia a leitura em cadeia
