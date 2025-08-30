@@ -3,6 +3,8 @@
 ## Problemas Conhecidos:
 * Arquivos grandes ficam lagados (tentar não renderizar tudo de uma vez, especialmente o MathJax)
 * PDF com senha não funciona
+* Leitor nativo do Edge não lê a descrição das equações
+* Algumas equações não estão sendo centralizadas. Não estão usando a tag correta (\$$...$$)
 
 ## Chaves do .env:
 * GOOGLE_API_KEY

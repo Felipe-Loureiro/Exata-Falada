@@ -309,8 +309,12 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
 3.  **Mathematical Equations:**
     * Identify ALL mathematical equations, formulas, and expressions.
     * Convert them accurately into LaTeX format.
-    * **CRITICAL DELIMITER USAGE:** For inline mathematics, YOU MUST USE `\\(...\\)` (e.g., `\\(x=y\\)`). For display mathematics (equations on their own line), YOU MUST USE `$$...$$` (e.g., `$$x = \\sum y_i$$`).
-    * **Ensure that *all* mathematical symbols, including single-letter variables mentioned in prose (e.g., '...where v is velocity...'), are enclosed in inline LaTeX delimiters (e.g., output as '...where \\(v\\) is velocity...').** This applies to all isolated symbols.
+    * **The LaTeX-rendered equation itself MUST be placed inside an element that is VISIBLE on screen but HIDDEN from screen readers. Do this by wrapping the equation with an element containing `aria-hidden="true"`. <span aria-hidden="true">\(t > 0\)</span>. Use this for both inline mathematics and display mathematics (equations on their own line).
+    * **Immediately AFTER each such equation, insert another element that is INVISIBLE visually but READ by screen readers. Use a `.sr-only` class for this. The content of this element must be a NATURAL LANGUAGE description in **Brazilian Portuguese**, describing how the equation should be read aloud. <span class="sr-only">t maior que 0</span>. Use this for both inline mathematics and display mathematics (equations on their own line).
+    * **CRITICAL DELIMITER USAGE:** For inline mathematics, YOU MUST USE `<span aria-hidden="true">\\(...\\)</span>` (e.g., `<span aria-hidden="true">\\(x=y\\)</span>`). For display mathematics (equations on their own line), YOU MUST USE `<span aria-hidden="true">$$...$$</span>` (e.g., `<span aria-hidden="true">$$x = \\sum y_i$$</span>`).
+    * **Ensure that *all* mathematical symbols, including single-letter variables mentioned in prose (e.g., '...where v is velocity...'), are enclosed in inline LaTeX delimiters followed by a natural language description (e.g., output as '...where <span aria-hidden="true">\\(v\\)</span> <span class="sr-only">v</span> is velocity...').** This applies to all isolated symbols.
+    * Exemple inline mathematics: <p>Se a posição de um carro no instante <span aria-hidden="true">\(t > 0\)</span> <span class="sr-only"> t maior que 0</span> é dada por <span aria-hidden="true">\(s(t) = (4+t^2)\)</span> <span class="sr-only">s de t é igual a 4 mais t ao quadrado</span><\p>
+    * Exemple display mathematics: <p><span aria-hidden="true">$$ v(2) = 4. $$</span> <span class="sr-only"> v de 2 é igual a 4</span><\p>
 
 4.  **Tables (CRITICAL FOR ACCESSIBILITY):**
     * Identify any tables.
@@ -546,7 +550,17 @@ def create_merged_html_with_accessibility(content_list, pdf_filename_title, outp
     .footnotes-list li { margin-bottom: 0.5em; }
     .footnotes-list li a { text-decoration: none; margin-left: 5px;}
     .footnotes-list li a:hover { text-decoration: underline; }
-    .sr-only {position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0;}
+    .sr-only {
+      opacity: 0;
+      height: 1px;
+      width: 1px;
+      overflow: hidden;
+      display: inline-block;
+      white-space: nowrap;
+      border: 0;
+      padding: 0;
+      margin: 0;
+    }
     p i, span i {font-style: italic;}
     sup > a {text-decoration: none;} sup > a:hover {text-decoration: underline;}
     table { border-collapse: collapse; width: auto; margin: 1em 0; }
@@ -762,6 +776,10 @@ function extractContentWithSemantics(rootNode) {
         if (node.closest('table') && node.tagName !== 'TABLE') {
             return;
         }
+		
+		if (node.closest('[aria-hidden="true"]')) {
+			return;
+		}
 
         // 3. Se o elemento é uma tabela, usa nosso processador especializado
         if (node.tagName === 'TABLE') {
@@ -775,10 +793,18 @@ function extractContentWithSemantics(rootNode) {
             if (node.tagName === 'LI') {
                 prefix = 'Item da lista: ';
             }
-            const text = (node.innerText || node.textContent).trim();
+			
+			const clone = node.cloneNode(true);
+
+			// remove elementos com aria-hidden="true" (checa robustamente apenas quando o valor é "true")
+			clone.querySelectorAll('[aria-hidden]').forEach(el => {
+                if (el.getAttribute('aria-hidden') === 'true') el.remove();
+            });
+			
+            const text = (clone.textContent || '').trim().replace(/\s+/g, ' ');
             if (text) {
                 segments.push({
-                    text: prefix + text.replace(/\s+/g, ' '),
+                    text: prefix + text,
                     element: node
                 });
             }
