@@ -840,18 +840,33 @@ function speakText() {
     const selectedText = selection.toString().trim();
 
     if (selectedText && selection.rangeCount > 0) {
-        // 1. Pega o intervalo (range) da seleção do usuário.
-        const range = selection.getRangeAt(0);
-        
-        // 2. Clona o conteúdo DENTRO do intervalo para um DocumentFragment.
-        //    Isso cria uma cópia em memória que mantém toda a estrutura HTML (tags, atributos, etc.).
-        const selectedFragment = range.cloneContents();
+        let combinedFragment = document.createDocumentFragment();
+        for (let i = 0; i < selection.rangeCount; i++) {
+            combinedFragment.appendChild(selection.getRangeAt(i).cloneContents());
+        }
 
-        // 3. AGORA SIM: Passamos esse fragmento para a sua função inteligente,
-        //    que saberá como filtrar os elementos com aria-hidden.
-        speechQueue = extractContentWithSemantics(selectedFragment);
+        // Verifica se há algum bloco que a função já reconhece
+        const blockSelector = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, table';
+        const hasBlocks = typeof combinedFragment.querySelector === 'function'
+          ? !!combinedFragment.querySelector(blockSelector)
+          : false;
 
-        // Opcional: Adicionar um prefixo para deixar claro que é um texto selecionado.
+        // Sempre usa um contêiner para garantir que o <p> embrulhado seja descendente
+        const container = document.createElement('div');
+
+        if (!hasBlocks) {
+            // Seleção só com texto/inline: embrulha num <p> e coloca no contêiner
+            const wrapperP = document.createElement('p');
+            wrapperP.appendChild(combinedFragment); // move os nós do fragmento para dentro do <p>
+            container.appendChild(wrapperP);
+        } else {
+            // Já há blocos reconhecíveis: coloca o fragmento direto no contêiner
+            container.appendChild(combinedFragment);
+        }
+
+        speechQueue = extractContentWithSemantics(container);
+
+        // Prefixo opcional
         if (speechQueue.length > 0) {
             speechQueue[0].text = "Texto selecionado: " + speechQueue[0].text;
         }
