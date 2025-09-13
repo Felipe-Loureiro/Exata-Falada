@@ -1051,6 +1051,11 @@ function changeFontSize(delta) {
     document.body.style.fontSize = currentFontSize + 'px';
     localStorage.setItem('accessibilityFontSize', currentFontSize);
     updateFontSizeDisplay();
+
+    // Se um elemento estiver sendo lido, centraliza a tela nele novamente.
+    if (currentlyHighlightedElement) {
+        currentlyHighlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
 }
 
 function setFontFamily(fontName) {
