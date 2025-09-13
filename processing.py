@@ -538,6 +538,7 @@ def create_merged_html_with_accessibility(content_list, pdf_filename_title, outp
     #accessibility-controls .control-group > button,
     #accessibility-controls .control-group > select,
     #accessibility-controls .control-group > label:not(:first-child),
+    #accessibility-controls .control-group > input,
     #accessibility-controls .control-group > span:not(:first-child) {display: inline-flex; align-items: center; justify-content: center; white-space: normal; min-width: 0; word-break: break-all; flex-grow: 0; flex-shrink: 1; flex-basis: auto; max-width: 100%; padding: 5px 10px; border-radius: 3px; box-sizing: border-box; cursor: pointer; text-align: center; margin: 0;}
     #accessibility-controls .control-group > *:first-child {width: 100%; flex-shrink: 0; box-sizing: border-box; margin-bottom: 8px; font-weight: bold; white-space: normal; word-break: break-word;}
     #accessibility-toggle img {pointer-events: none;}
@@ -597,7 +598,7 @@ def create_merged_html_with_accessibility(content_list, pdf_filename_title, outp
     body.normal-mode th, body.normal-mode td { border-color: #ccc; }
     body.dark-mode th, body.dark-mode td { border-color: #555; }
     body.high-contrast-mode th, body.high-contrast-mode td { border-color: #FFFF00; }
-    .MathJax_Display { margin: 1em 0 !important; } /* Ensure MathJax display math has proper margins */
+    .MathJax_Display { margin: 1em 0 !important; }
     #accessibility-toggle { position: fixed; top: 20px; right: 20px; z-index: 1100; width: 50px; height: 50px; background-color: #007BFF; color: white; border: none; border-radius: 50%; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2); }
     body.dark-mode #accessibility-toggle { background-color: #4dabf7; }
     body.high-contrast-mode #accessibility-toggle { background-color: #FFFF00; color: #000; border: 1px solid #000;}
@@ -608,80 +609,21 @@ def create_merged_html_with_accessibility(content_list, pdf_filename_title, outp
     body.normal-mode .control-group { border-color: #bbb; }
     body.dark-mode .control-group { border-color: #555; }
     body.high-contrast-mode .control-group { border-color: #FFFF00; }
-
-    /* Styles for embedded original page image viewer */
-    details.original-page-viewer {
-        margin-top: 20px;
-        margin-bottom: 20px;
-        border: 1px dashed #999;
-        border-radius: 5px;
-        padding: 10px;
-        background-color: rgba(0,0,0,0.02); /* Light background for normal mode */
-    }
-    body.dark-mode details.original-page-viewer {
-        border-color: #666;
-        background-color: rgba(255,255,255,0.03); /* Slightly lighter for dark mode */
-    }
-    body.high-contrast-mode details.original-page-viewer {
-        border-color: #FFFF00;
-        background-color: #111; /* Dark for high contrast */
-    }
-    details.original-page-viewer summary {
-        cursor: pointer;
-        padding: 8px;
-        font-weight: bold;
-        color: #0056b3; /* Link-like color for normal mode */
-        background-color: rgba(0,0,0,0.03);
-        border-radius: 3px;
-        margin: -10px -10px 10px -10px; /* Extend to edges of padding */
-    }
-    body.dark-mode details.original-page-viewer summary {
-        color: #87CEFA; /* Lighter blue for dark mode */
-        background-color: rgba(255,255,255,0.05);
-    }
-    body.high-contrast-mode details.original-page-viewer summary {
-        color: #00FFFF; /* Cyan for high contrast */
-        background-color: #222;
-        border: 1px solid #FFFF00;
-    }
-    details.original-page-viewer summary:hover,
-    details.original-page-viewer summary:focus {
-        text-decoration: underline;
-        background-color: rgba(0,0,0,0.05);
-    }
-    body.dark-mode details.original-page-viewer summary:hover,
-    body.dark-mode details.original-page-viewer summary:focus {
-        background-color: rgba(255,255,255,0.08);
-    }
-    body.high-contrast-mode details.original-page-viewer summary:hover,
-    body.high-contrast-mode details.original-page-viewer summary:focus {
-        background-color: #333;
-    }
-    details.original-page-viewer img {
-        display: block;
-        max-width: 100%;
-        height: auto;
-        margin-top: 10px;
-        border: 1px solid #ccc; /* Border for the image */
-        background-color: white; /* Background for transparent PNGs, if any */
-    }
-    body.dark-mode details.original-page-viewer img {
-        border-color: #444;
-        background-color: #333; /* Darker background for image in dark mode */
-    }
-    body.high-contrast-mode details.original-page-viewer img {
-        border-color: #FFFF00; /* Yellow border in high contrast */
-        background-color: #000;
-    }
-    .tts-highlight {
-        background-color: yellow !important;
-        color: black !important; /* Força o texto para a cor preta */
-        box-shadow: 0 0 8px rgba(218, 165, 32, 0.7); /* Sombra sutil dourada/amarela */
-        transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
-        border-radius: 3px;
-    }
-        .dark-mode .tts-highlight { background-color: #58a6ff; }
-        .high-contrast-mode .tts-highlight { background-color: #FFFF00; color: black !important; }
+    details.original-page-viewer { margin-top: 20px; margin-bottom: 20px; border: 1px dashed #999; border-radius: 5px; padding: 10px; background-color: rgba(0,0,0,0.02); }
+    body.dark-mode details.original-page-viewer { border-color: #666; background-color: rgba(255,255,255,0.03); }
+    body.high-contrast-mode details.original-page-viewer { border-color: #FFFF00; background-color: #111; }
+    details.original-page-viewer summary { cursor: pointer; padding: 8px; font-weight: bold; color: #0056b3; background-color: rgba(0,0,0,0.03); border-radius: 3px; margin: -10px -10px 10px -10px; }
+    body.dark-mode details.original-page-viewer summary { color: #87CEFA; background-color: rgba(255,255,255,0.05); }
+    body.high-contrast-mode details.original-page-viewer summary { color: #00FFFF; background-color: #222; border: 1px solid #FFFF00; }
+    details.original-page-viewer summary:hover, details.original-page-viewer summary:focus { text-decoration: underline; background-color: rgba(0,0,0,0.05); }
+    body.dark-mode details.original-page-viewer summary:hover, body.dark-mode details.original-page-viewer summary:focus { background-color: rgba(255,255,255,0.08); }
+    body.high-contrast-mode details.original-page-viewer summary:hover, body.high-contrast-mode details.original-page-viewer summary:focus { background-color: #333; }
+    details.original-page-viewer img { display: block; max-width: 100%; height: auto; margin-top: 10px; border: 1px solid #ccc; background-color: white; }
+    body.dark-mode details.original-page-viewer img { border-color: #444; background-color: #333; }
+    body.high-contrast-mode details.original-page-viewer img { border-color: #FFFF00; background-color: #000; }
+    .tts-highlight { background-color: yellow !important; color: black !important; box-shadow: 0 0 8px rgba(218, 165, 32, 0.7); transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out; border-radius: 3px; }
+    .dark-mode .tts-highlight { background-color: #58a6ff; }
+    .high-contrast-mode .tts-highlight { background-color: #FFFF00; color: black !important; }
 </style>
 """
     accessibility_js = r"""
@@ -701,70 +643,39 @@ let speechQueue = [];
 let currentSegmentIndex = 0;
 let currentlyHighlightedElement = null;
 
+// Estado da recentralização periódica
+let isPeriodicRecenterEnabled = false;
+let recenterInterval = null;
+
 
 // --- FUNÇÕES DE SÍNTESE DE VOZ E PROCESSAMENTO DE TEXTO ---
 
-// NOVA FUNÇÃO PARA PROCESSAR TABELAS DE FORMA INTELIGENTE
-// VERSÃO APRIMORADA E MAIS ROBUSTA
 function processTable(tableNode) {
     let content = [];
     const caption = tableNode.querySelector('caption');
-    if (caption && caption.innerText.trim()) {
-        content.push(`Iniciando tabela com título: ${caption.innerText.trim()}.`);
-    } else {
-        content.push("Iniciando tabela.");
-    }
-
+    if (caption && caption.innerText.trim()) { content.push(`Iniciando tabela com título: ${caption.innerText.trim()}.`); } else { content.push("Iniciando tabela."); }
     const headers = [];
-    // Procura por cabeçalhos (th) na primeira linha da tabela
     const firstRow = tableNode.querySelector('tr');
-    if (firstRow) {
-        firstRow.querySelectorAll('th').forEach(th => {
-            headers.push(th.innerText.trim());
-        });
-    }
-
+    if (firstRow) { firstRow.querySelectorAll('th').forEach(th => { headers.push(th.innerText.trim()); }); }
     const allRows = Array.from(tableNode.querySelectorAll('tr'));
-    // Se encontramos cabeçalhos na primeira linha, pulamos ela no loop principal
     const bodyRows = headers.length > 0 ? allRows.slice(1) : allRows;
-
     bodyRows.forEach(row => {
         let rowContent = [];
-        // Lida com o cabeçalho da linha (um 'th' no início da linha)
         const rowHeader = row.querySelector('th');
-        if (rowHeader && rowHeader.innerText.trim()) {
-            rowContent.push(`Linha: ${rowHeader.innerText.trim()}.`);
-        }
-
+        if (rowHeader && rowHeader.innerText.trim()) { rowContent.push(`Linha: ${rowHeader.innerText.trim()}.`); }
         const cells = row.querySelectorAll('td');
         cells.forEach((cell, index) => {
-            // Associa a célula ao cabeçalho da coluna pelo índice
             const headerText = headers[index] || `Coluna ${index + 1}`;
             const cellText = cell.innerText.trim();
-            if (cellText) {
-                rowContent.push(`${headerText}: ${cellText}.`);
-            }
+            if (cellText) { rowContent.push(`${headerText}: ${cellText}.`); }
         });
-
-        if (rowContent.length > 0) {
-            content.push(rowContent.join(' '));
-        }
+        if (rowContent.length > 0) { content.push(rowContent.join(' ')); }
     });
-
-    // Salvaguarda: se a análise estruturada falhar, lê o texto bruto da tabela.
-    if (content.length <= 1) { // Apenas contém "Iniciando tabela."
+    if (content.length <= 1) {
         const fallbackText = tableNode.innerText.trim().replace(/\s+/g, ' ');
-        if (fallbackText) {
-            return { text: "Tabela encontrada. Conteúdo: " + fallbackText, element: tableNode };
-        } else {
-            return { text: "Tabela encontrada, mas está vazia.", element: tableNode };
-        }
+        if (fallbackText) { return { text: "Tabela encontrada. Conteúdo: " + fallbackText, element: tableNode }; } else { return { text: "Tabela encontrada, mas está vazia.", element: tableNode }; }
     }
-
-    return {
-        text: content.join(' '),
-        element: tableNode
-    };
+    return { text: content.join(' '), element: tableNode };
 }
 
 function populateVoiceList() {
@@ -772,11 +683,9 @@ function populateVoiceList() {
     const voiceSelector = document.getElementById('voiceSelector');
     if (!voiceSelector) return;
     voiceSelector.innerHTML = '';
-
     const ptVoices = voices.filter(voice => voice.lang.startsWith('pt'));
     const enVoices = voices.filter(voice => voice.lang.replace("_","-").startsWith('en-US'));
     const sortedVoices = [...ptVoices, ...enVoices];
-
     sortedVoices.forEach(voice => {
         const option = document.createElement('option');
         option.textContent = `${voice.name} (${voice.lang})`;
@@ -784,7 +693,6 @@ function populateVoiceList() {
         option.setAttribute('data-name', voice.name);
         voiceSelector.appendChild(option);
     });
-
     const savedVoiceName = localStorage.getItem('accessibilityVoiceName');
     if (savedVoiceName) {
         const savedOption = Array.from(voiceSelector.options).find(opt => opt.textContent.includes(savedVoiceName));
@@ -792,252 +700,113 @@ function populateVoiceList() {
     }
 }
 
-
-// VERSÃO APRIMORADA E NÃO RECURSIVA
 function extractContentWithSemantics(rootNode) {
     const segments = [];
-    // 1. Pega uma lista de todos os elementos de conteúdo relevantes na ordem do documento
     const elementsToProcess = rootNode.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, table');
-
     elementsToProcess.forEach(node => {
-        // 2. Pula qualquer elemento que esteja DENTRO de uma tabela (como um <p> numa célula),
-        //    pois a função processTable cuidará dele.
-        if (node.closest('table') && node.tagName !== 'TABLE') {
-            return;
-        }
-		
-		if (node.closest('[aria-hidden="true"]')) {
-			return;
-		}
-
-        // 3. Se o elemento é uma tabela, usa nosso processador especializado
+        if ((node.closest('table') && node.tagName !== 'TABLE') || node.closest('[aria-hidden="true"]')) { return; }
         if (node.tagName === 'TABLE') {
             const tableSegment = processTable(node);
-            if (tableSegment && tableSegment.text) {
-                segments.push(tableSegment);
-            }
-        // 4. Se for qualquer outro tipo de bloco de texto, processa seu conteúdo
+            if (tableSegment && tableSegment.text) { segments.push(tableSegment); }
         } else {
-            let prefix = '';
-            if (node.tagName === 'LI') {
-                prefix = 'Item da lista: ';
-            }
-			
-			const clone = node.cloneNode(true);
-
-			// remove elementos com aria-hidden="true" (checa robustamente apenas quando o valor é "true")
-			clone.querySelectorAll('[aria-hidden]').forEach(el => {
-                if (el.getAttribute('aria-hidden') === 'true') el.remove();
-            });
-			
+            let prefix = (node.tagName === 'LI') ? 'Item da lista: ' : '';
+            const clone = node.cloneNode(true);
+            clone.querySelectorAll('[aria-hidden]').forEach(el => { if (el.getAttribute('aria-hidden') === 'true') el.remove(); });
             const text = (clone.textContent || '').trim().replace(/\s+/g, ' ');
-            if (text) {
-                segments.push({
-                    text: prefix + text,
-                    element: node
-                });
-            }
+            if (text) { segments.push({ text: prefix + text, element: node }); }
         }
     });
-
     return segments;
 }
 
-
 function speakText() {
     if (synth.speaking && !isPaused) return;
-
-    if (synth.paused && utterance) {
-        synth.resume();
-        return;
-    }
-
-    // Se a fila já existe, não faz nada (para evitar recriar ao clicar play várias vezes)
-    if (speechQueue.length > 0) {
-        // Se a fala terminou completamente, permite reiniciar
-        if (currentSegmentIndex < speechQueue.length) {
-            playQueue();
-            return;
-        }
-    }
-    
-    // Limpa a fila e o índice para uma nova leitura
+    if (synth.paused && utterance) { synth.resume(); return; }
+    if (speechQueue.length > 0 && currentSegmentIndex < speechQueue.length) { playQueue(); return; }
     speechQueue = [];
     currentSegmentIndex = 0;
-
     const selection = window.getSelection();
     const selectedText = selection.toString().trim();
-
     if (selectedText && selection.rangeCount > 0) {
         let combinedFragment = document.createDocumentFragment();
-        for (let i = 0; i < selection.rangeCount; i++) {
-            combinedFragment.appendChild(selection.getRangeAt(i).cloneContents());
-        }
-
-        // Verifica se há algum bloco que a função já reconhece
-        const blockSelector = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, table';
-        const hasBlocks = typeof combinedFragment.querySelector === 'function'
-          ? !!combinedFragment.querySelector(blockSelector)
-          : false;
-
-        // Sempre usa um contêiner para garantir que o <p> embrulhado seja descendente
+        for (let i = 0; i < selection.rangeCount; i++) { combinedFragment.appendChild(selection.getRangeAt(i).cloneContents()); }
         const container = document.createElement('div');
-
-        if (!hasBlocks) {
-            // Seleção só com texto/inline: embrulha num <p> e coloca no contêiner
-            const wrapperP = document.createElement('p');
-            wrapperP.appendChild(combinedFragment); // move os nós do fragmento para dentro do <p>
-            container.appendChild(wrapperP);
-        } else {
-            // Já há blocos reconhecíveis: coloca o fragmento direto no contêiner
-            container.appendChild(combinedFragment);
-        }
-
+        const hasBlocks = typeof combinedFragment.querySelector === 'function' && !!combinedFragment.querySelector('p, h1, h2, h3, h4, h5, h6, li, blockquote, table');
+        if (!hasBlocks) { const wrapperP = document.createElement('p'); wrapperP.appendChild(combinedFragment); container.appendChild(wrapperP); } else { container.appendChild(combinedFragment); }
         speechQueue = extractContentWithSemantics(container);
-
-        // Prefixo opcional
-        if (speechQueue.length > 0) {
-            speechQueue[0].text = "Texto selecionado: " + speechQueue[0].text;
-        }
-
+        if (speechQueue.length > 0) { speechQueue[0].text = "Texto selecionado: " + speechQueue[0].text; }
     } else {
-        // Este comportamento já estava correto: ler o conteúdo principal.
         const rootNode = document.getElementById('main-content') || document.body;
         speechQueue = extractContentWithSemantics(rootNode);
     }
-
-    // Se nada foi encontrado para falar, não faz nada.
-    if (speechQueue.length === 0) {
-        return;
+    if (speechQueue.length === 0) return;
+    
+    // Gerenciamento do timer de recentralização
+    if (recenterInterval) { clearInterval(recenterInterval); }
+    if (isPeriodicRecenterEnabled) {
+        recenterInterval = setInterval(() => {
+            if (currentlyHighlightedElement && synth.speaking && !isPaused) {
+                currentlyHighlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }, 2500);
     }
-
-    // Define o ponto de partida e inicia a leitura em cadeia
+    
     currentSegmentIndex = 0;
     playQueue();
 }
 
 function playQueue() {
-    if (currentSegmentIndex >= speechQueue.length) {
-        stopSpeech();
-        return;
-    }
-
+    if (currentSegmentIndex >= speechQueue.length) { stopSpeech(); return; }
     const segment = speechQueue[currentSegmentIndex];
-    if (!segment || !segment.text) {
-        currentSegmentIndex++;
-        playQueue();
-        return;
-    }
-
-    // Limpa destaque anterior e aplica o novo
-    if (currentlyHighlightedElement) {
-        currentlyHighlightedElement.classList.remove('tts-highlight');
-    }
+    if (!segment || !segment.text) { currentSegmentIndex++; playQueue(); return; }
+    if (currentlyHighlightedElement) { currentlyHighlightedElement.classList.remove('tts-highlight'); }
     if (segment.element) {
         currentlyHighlightedElement = segment.element;
         currentlyHighlightedElement.classList.add('tts-highlight');
         currentlyHighlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-
     utterance = new SpeechSynthesisUtterance(segment.text);
-
-    // Configura voz, velocidade e tom
     const voiceSelector = document.getElementById('voiceSelector');
     const selectedOption = voiceSelector.options[voiceSelector.selectedIndex];
-    if (selectedOption) {
-        const voiceName = selectedOption.getAttribute('data-name');
-        utterance.voice = voices.find(voice => voice.name === voiceName);
-    }
+    if (selectedOption) { const voiceName = selectedOption.getAttribute('data-name'); utterance.voice = voices.find(voice => voice.name === voiceName); }
     utterance.rate = parseFloat(document.getElementById('rateSlider').value);
     utterance.pitch = parseFloat(document.getElementById('pitchSlider').value);
-
-    utterance.onerror = (event) => {
-        console.error('SpeechSynthesisUtterance.onerror', event);
-        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight');
-    };
-
-    // Ao terminar, avança para o próximo item da fila
-    utterance.onend = () => {
-        currentSegmentIndex++;
-        playQueue();
-    };
-
-    // Trata a retomada da pausa
-    utterance.onresume = () => {
-        isPaused = false;
-        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.add('tts-highlight');
-    };
-
-    // Trata a pausa
-    utterance.onpause = () => {
-        isPaused = true;
-        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight');
-    };
-
+    utterance.onerror = (event) => { console.error('SpeechSynthesisUtterance.onerror', event); if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight'); };
+    utterance.onend = () => { currentSegmentIndex++; playQueue(); };
+    utterance.onresume = () => { isPaused = false; if (currentlyHighlightedElement) currentlyHighlightedElement.classList.add('tts-highlight'); };
+    utterance.onpause = () => { isPaused = true; if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight'); };
     synth.speak(utterance);
     isPaused = false;
 }
 
-function pauseSpeech() {
-    if (synth.speaking && !isPaused) {
-        synth.pause();
-    }
-}
+function pauseSpeech() { if (synth.speaking && !isPaused) { synth.pause(); } }
 
 function stopSpeech() {
-    if (utterance) utterance.onend = null; // Impede que o onend seja chamado após o cancelamento
+    if (utterance) utterance.onend = null;
     isPaused = false;
     synth.cancel();
-
-    if (currentlyHighlightedElement) {
-        currentlyHighlightedElement.classList.remove('tts-highlight');
-        currentlyHighlightedElement = null;
-    }
-
+    if (currentlyHighlightedElement) { currentlyHighlightedElement.classList.remove('tts-highlight'); currentlyHighlightedElement = null; }
+    if (recenterInterval) { clearInterval(recenterInterval); recenterInterval = null; }
     speechQueue = [];
     currentSegmentIndex = 0;
     utterance = null;
 }
 
-// --- FUNÇÕES DE NAVEGAÇÃO (LÓGICA REFEITA) ---
-
 function skipToPrevious() {
-    // Só funciona se houver uma fila e não estiver no primeiro item
-    if (speechQueue.length === 0 || currentSegmentIndex <= 0) {
-        return;
-    }
-
-    // 1. Move o índice para o item anterior
+    if (speechQueue.length === 0 || currentSegmentIndex <= 0) return;
     currentSegmentIndex--;
-
-    // 2. Para a fala atual, desanexando o 'onend' para evitar chamadas duplas
     if (utterance) utterance.onend = null;
     synth.cancel();
-
-    // 3. Toca o novo item com um pequeno atraso para o navegador processar o cancelamento
     setTimeout(playQueue, 100);
 }
 
 function skipToNext() {
-    // Só funciona se houver uma fila e não estiver no último item
-    if (speechQueue.length === 0 || currentSegmentIndex >= speechQueue.length - 1) {
-        stopSpeech();
-        return;
-    }
-
-    // 1. Move o índice para o próximo item
+    if (speechQueue.length === 0 || currentSegmentIndex >= speechQueue.length - 1) { stopSpeech(); return; }
     currentSegmentIndex++;
-
-    // 2. Para a fala atual, desanexando o 'onend'
     if (utterance) utterance.onend = null;
     synth.cancel();
-
-    // 3. Toca o novo item com um pequeno atraso
     setTimeout(playQueue, 100);
 }
-
-
-// --- FUNÇÕES DE ACESSIBILIDADE VISUAL E CONTROLES ---
 
 function updateFontSizeDisplay() {
     const fontSizeValue = document.getElementById('fontSizeValue');
@@ -1051,11 +820,7 @@ function changeFontSize(delta) {
     document.body.style.fontSize = currentFontSize + 'px';
     localStorage.setItem('accessibilityFontSize', currentFontSize);
     updateFontSizeDisplay();
-
-    // Se um elemento estiver sendo lido, centraliza a tela nele novamente.
-    if (currentlyHighlightedElement) {
-        currentlyHighlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+    if (currentlyHighlightedElement) { currentlyHighlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 }
 
 function setFontFamily(fontName) {
@@ -1074,19 +839,13 @@ function updateSliderLabels() {
     const rateValue = document.getElementById('rateValue');
     const pitchSlider = document.getElementById('pitchSlider');
     const pitchValue = document.getElementById('pitchValue');
-
     if(rateValue) rateValue.textContent = `${parseFloat(rateSlider.value).toFixed(1)}x`;
     if(pitchValue) pitchValue.textContent = parseFloat(pitchSlider.value).toFixed(1);
 }
 
 function saveSpeechSettings() {
     const voiceSelector = document.getElementById('voiceSelector');
-    if (voiceSelector) {
-        const selectedVoice = voiceSelector.options[voiceSelector.selectedIndex];
-        if (selectedVoice) {
-            localStorage.setItem('accessibilityVoiceName', selectedVoice.getAttribute('data-name'));
-        }
-    }
+    if (voiceSelector) { const selectedVoice = voiceSelector.options[voiceSelector.selectedIndex]; if (selectedVoice) { localStorage.setItem('accessibilityVoiceName', selectedVoice.getAttribute('data-name')); } }
     localStorage.setItem('accessibilityRate', document.getElementById('rateSlider').value);
     localStorage.setItem('accessibilityPitch', document.getElementById('pitchSlider').value);
 }
@@ -1100,53 +859,55 @@ function toggleAccessibilityMenu() {
     toggleButton.setAttribute('aria-label', isExpanded ? 'Fechar Menu de Acessibilidade' : 'Abrir Menu de Acessibilidade');
 }
 
-
-// --- INICIALIZAÇÃO ---
-document.addEventListener('DOMContentLoaded', () => {
-    if (synth.onvoiceschanged !== undefined) {
-        synth.onvoiceschanged = populateVoiceList;
+// --- FUNÇÃO CORRIGIDA AQUI ---
+function togglePeriodicRecenter(isEnabled) {
+    isPeriodicRecenterEnabled = isEnabled;
+    localStorage.setItem('accessibilityRecenter', isEnabled);
+    
+    // Sempre limpa o timer anterior para evitar duplicatas
+    if (recenterInterval) {
+        clearInterval(recenterInterval);
+        recenterInterval = null;
     }
-    populateVoiceList();
 
+    // Se a opção foi ativada E a leitura estiver em andamento, inicia um novo timer
+    if (isEnabled && synth.speaking && !isPaused) {
+        recenterInterval = setInterval(() => {
+            if (currentlyHighlightedElement) {
+                currentlyHighlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }, 2500);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (synth.onvoiceschanged !== undefined) { synth.onvoiceschanged = populateVoiceList; }
+    populateVoiceList();
     const savedTheme = localStorage.getItem('accessibilityTheme') || 'dark';
     changeTheme(savedTheme);
     document.getElementById('themeSelector').value = savedTheme;
-
     const savedFontSize = parseInt(localStorage.getItem('accessibilityFontSize'), 10) || 16;
     currentFontSize = savedFontSize;
     document.body.style.fontSize = currentFontSize + 'px';
     updateFontSizeDisplay();
-
     const savedFontFamily = localStorage.getItem('accessibilityFontFamily') || fonts[0];
     setFontFamily(savedFontFamily);
     document.getElementById('fontSelector').value = savedFontFamily;
-
     const savedRate = localStorage.getItem('accessibilityRate') || '1';
     document.getElementById('rateSlider').value = savedRate;
     const savedPitch = localStorage.getItem('accessibilityPitch') || '1';
     document.getElementById('pitchSlider').value = savedPitch;
-
+    const savedRecenter = localStorage.getItem('accessibilityRecenter') === 'true';
+    isPeriodicRecenterEnabled = savedRecenter;
+    document.getElementById('recenterToggle').checked = savedRecenter;
     updateSliderLabels();
-
-    document.addEventListener('keydown', function(event) {
-        if (event.key === "Escape") {
-            stopSpeech();
-        }
-    });
-
+    document.addEventListener('keydown', function(event) { if (event.key === "Escape") { stopSpeech(); } });
     const menu = document.getElementById('accessibility-controls');
     const toggleButton = document.getElementById('accessibility-toggle');
-    if (menu && !menu.classList.contains('expanded')) {
-        menu.classList.add('collapsed');
-    }
-    if (toggleButton && menu) {
-        const isExpanded = menu.classList.contains('expanded');
-        toggleButton.setAttribute('aria-expanded', isExpanded.toString());
-        toggleButton.setAttribute('aria-label', isExpanded ? 'Fechar Menu de Acessibilidade' : 'Abrir Menu de Acessibilidade');
-    }
+    if (menu && !menu.classList.contains('expanded')) { menu.classList.add('collapsed'); }
+    if (toggleButton && menu) { const isExpanded = menu.classList.contains('expanded'); toggleButton.setAttribute('aria-expanded', isExpanded.toString()); toggleButton.setAttribute('aria-label', isExpanded ? 'Fechar Menu de Acessibilidade' : 'Abrir Menu de Acessibilidade'); }
 });
 </script>
-
 """
     safe_title = html.escape(pdf_filename_title if pdf_filename_title else "Documento")
     mathjax_config_head_merged = f"""
@@ -1155,21 +916,9 @@ document.addEventListener('DOMContentLoaded', () => {
     <title>Accessible Document: {safe_title}</title>
     <script>
     MathJax = {{
-        tex: {{
-            inlineMath: [['\\\\(', '\\\\)']],
-            displayMath: [['$$', '$$']],
-            processEscapes: true,
-            processEnvironments: true,
-            tags: 'ams'
-        }},
-        options: {{
-            skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-            ignoreHtmlClass: 'tex2jax_ignore',
-            processHtmlClass: 'tex2jax_process'
-        }},
-        svg: {{
-            fontCache: 'global'
-        }}
+        tex: {{ inlineMath: [['\\\\(', '\\\\)']], displayMath: [['$$', '$$']], processEscapes: true, processEnvironments: true, tags: 'ams' }},
+        options: {{ skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'], ignoreHtmlClass: 'tex2jax_ignore', processHtmlClass: 'tex2jax_process' }},
+        svg: {{ fontCache: 'global' }}
     }};
     </script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
@@ -1193,13 +942,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     <div id="accessibility-controls" class="collapsed" role="region" aria-labelledby="accessibility-menu-heading">
         <h2 id="accessibility-menu-heading" class="sr-only">Menu de Controles de Acessibilidade</h2>
-
         <div class="control-group">
             <span>Tamanho da Fonte: <span id="fontSizeValue" aria-live="polite">16px</span></span>
             <button onclick="changeFontSize(-2)" aria-label="Diminuir tamanho da fonte">A-</button>
             <button onclick="changeFontSize(2)" aria-label="Aumentar tamanho da fonte">A+</button>
         </div>
-
         <div class="control-group">
             <label for="fontSelector">Fonte:</label>
             <select id="fontSelector" onchange="setFontFamily(this.value)" aria-label="Selecionar família da fonte">
@@ -1209,7 +956,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <option value="Courier New">Courier New</option>
             </select>
         </div>
-
         <div class="control-group">
             <label for="themeSelector">Tema Visual:</label>
             <select id="themeSelector" onchange="changeTheme(this.value)" aria-label="Selecionar tema visual">
@@ -1224,47 +970,40 @@ document.addEventListener('DOMContentLoaded', () => {
             <button onclick="pauseSpeech()" aria-label="Pausar leitura">⏸️ Pausar</button>
             <button onclick="stopSpeech()" aria-label="Parar leitura (Tecla Esc)">⏹️ Parar (Esc)</button>
         </div>
-
         <div class="control-group">
             <span>Navegar no Texto:</span>
             <button onclick="skipToPrevious()" aria-label="Ler segmento anterior">⏪ Anterior</button>
             <button onclick="skipToNext()" aria-label="Ler próximo segmento">Próximo ⏩</button>
         </div>
-
+        <div class="control-group">
+            <label for="recenterToggle" style="flex-grow: 1;">Manter texto centralizado:</label>
+            <input type="checkbox" id="recenterToggle" onchange="togglePeriodicRecenter(this.checked)" aria-label="Ativar ou desativar a centralização automática durante a leitura">
+        </div>
         <div class="control-group">
             <label for="voiceSelector">Voz:</label>
-            <select id="voiceSelector" aria-label="Selecionar voz"></select>
+            <select id="voiceSelector" aria-label="Selecionar voz" onchange="saveSpeechSettings()"></select>
         </div>
-
         <div class="control-group">
             <label for="rateSlider">Velocidade:</label>
             <input type="range" id="rateSlider" min="0.5" max="5" step="0.1" value="1" oninput="updateSliderLabels(); saveSpeechSettings();">
             <span id="rateValue" aria-live="polite">1x</span>
         </div>
-
         <div class="control-group">
             <label for="pitchSlider">Tom:</label>
             <input type="range" id="pitchSlider" min="0" max="2" step="0.1" value="1" oninput="updateSliderLabels(); saveSpeechSettings();">
             <span id="pitchValue" aria-live="polite">1</span>
         </div>
-
     </div>
     <main id="main-content" role="main">
 """
     for i, content_data in enumerate(content_list):
         page_num_in_doc = content_data["page_num_in_doc"]
-        html_body = content_data.get("body", "") # Default to empty string if not present
-        base64_image = content_data.get("base64_image") # Get base64 image data
-
+        html_body = content_data.get("body", "")
+        base64_image = content_data.get("base64_image")
         if i > 0: merged_html += f"\n<hr class=\"page-separator\" aria-hidden=\"true\">\n"
-
         merged_html += f"<article class='page-content' id='page-{page_num_in_doc}' aria-labelledby='page-heading-{page_num_in_doc}'>\n"
         merged_html += f"<h2 id='page-heading-{page_num_in_doc}'>Página {page_num_in_doc}</h2>\n"
-
         merged_html += html_body if html_body else f"<p><i>[Conteúdo não pôde ser extraído para a página {page_num_in_doc}.]</i></p>"
-
-        # Add the <details> section for the original image if HTML body exists, base64 image exists,
-        # and the AI was instructed to provide a description (heuristic: "[Descrição:" is present).
         if html_body and base64_image and "[Descrição:" in html_body:
             safe_alt_text = html.escape(f"Imagem original da página {page_num_in_doc}")
             merged_html += f"""
@@ -1280,28 +1019,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if MODE == "LOCAL":
         try:
-            print(output_path)
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(merged_html)
+            with open(output_path, "w", encoding="utf-8") as f: f.write(merged_html)
             return True
-        except Exception as e:
-            raise IOError(f"Falha ao escrever arquivo HTML: {e}")
+        except Exception as e: raise IOError(f"Falha ao escrever arquivo HTML: {e}")
     elif MODE == "S3":
         try:
-            # Converte a string HTML para bytes
             html_bytes = merged_html.encode('utf-8')
-            # Faz o upload dos bytes diretamente para o S3
-            s3_client.put_object(
-                Bucket=s3_bucket,
-                Key=output_s3_key,
-                Body=html_bytes,
-                ContentType='text/html',
-                ContentEncoding='utf-8'
-            )
+            s3_client.put_object(Bucket=s3_bucket, Key=output_s3_key, Body=html_bytes, ContentType='text/html', ContentEncoding='utf-8')
             return True
-        except ClientError as e:
-            # Lança um erro que será capturado pela função principal
-            raise IOError(f"Falha ao fazer upload do arquivo HTML para o S3: {e}")
+        except ClientError as e: raise IOError(f"Falha ao fazer upload do arquivo HTML para o S3: {e}")
     return None
 
 
