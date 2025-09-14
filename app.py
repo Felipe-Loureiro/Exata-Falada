@@ -3,11 +3,13 @@ import uuid
 import threading
 import boto3
 from botocore.exceptions import ClientError
-from flask import Flask, render_template, request, jsonify, redirect, send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, send_from_directory, flash, send_file
 from werkzeug.utils import secure_filename
 from processing import process_pdf_web, AVAILABLE_GEMINI_MODELS, DEFAULT_GEMINI_MODEL, API_KEY_ENV_VAR
 from config import MODE
 from dotenv import load_dotenv
+from io import BytesIO  # Importe BytesIO para manipulação em memória
+from patcher import patch_html_files  # Importe a nova função
 
 load_dotenv()
 
@@ -15,6 +17,7 @@ load_dotenv()
 ALLOWED_EXTENSIONS = {'pdf'}
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # Limite de 50 MB para upload
+app.secret_key = os.urandom(24)  # NECESSÁRIO para usar o sistema de mensagens 'flash'
 
 
 if MODE == "LOCAL":
@@ -48,6 +51,9 @@ TASKS = {}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def allowed_html_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'html', 'htm'}
 
 
 # --- Rotas da Aplicação ---
@@ -245,6 +251,62 @@ def cancel_task(task_id):
 
     return jsonify({'message': 'A tarefa já foi concluída'})
 
+
+# ==========================================================
+# ===   NOVA ROTA PARA CORREÇÃO/MERGE DE ARQUIVOS HTML   ===
+# ==========================================================
+@app.route('/patch', methods=['GET', 'POST'])
+def patch_html():
+    if request.method == 'POST':
+        # 1. Validar se os arquivos foram enviados
+        if 'original_file' not in request.files or 'corrections_file' not in request.files:
+            flash('Ambos os arquivos (original e correções) são necessários.', 'danger')
+            return redirect(request.url)
+
+        original_file = request.files['original_file']
+        corrections_file = request.files['corrections_file']
+
+        # 2. Validar nomes e extensões dos arquivos
+        if original_file.filename == '' or corrections_file.filename == '':
+            flash('Por favor, selecione os dois arquivos.', 'danger')
+            return redirect(request.url)
+
+        if not allowed_html_file(original_file.filename) or not allowed_html_file(corrections_file.filename):
+            flash('Apenas arquivos .html ou .htm são permitidos.', 'danger')
+            return redirect(request.url)
+
+        try:
+            # 3. Ler o conteúdo dos arquivos em memória (evita salvar no disco)
+            original_content = original_file.read().decode('utf-8')
+            corrections_content = corrections_file.read().decode('utf-8')
+
+            # 4. Chamar a função de processamento do patcher.py
+            final_html_content = patch_html_files(original_content, corrections_content)
+
+            # 5. Preparar o arquivo final para download, também em memória
+            buffer = BytesIO()
+            buffer.write(final_html_content.encode('utf-8'))
+            buffer.seek(0)  # "Rebobina" o buffer para o início
+
+            # Gera um nome para o arquivo de saída
+            original_basename = os.path.splitext(secure_filename(original_file.filename))[0]
+            output_filename = f"{original_basename}_corrigido.html"
+
+            # Envia o arquivo do buffer diretamente para o usuário
+            return send_file(
+                buffer,
+                as_attachment=True,
+                download_name=output_filename,
+                mimetype='text/html'
+            )
+
+        except Exception as e:
+            app.logger.error(f"Erro ao processar o patch de HTML: {e}")
+            flash(f'Ocorreu um erro inesperado durante o processamento: {e}', 'danger')
+            return redirect(request.url)
+
+    # Para requisições GET, apenas renderiza a página com o formulário
+    return render_template('patch.html')
 
 if __name__ == '__main__':
     if MODE == "LOCAL":

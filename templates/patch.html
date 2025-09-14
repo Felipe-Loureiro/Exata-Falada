@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corrigir/Mesclar HTML</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Corrigir/Mesclar Arquivos HTML</h1>
+            <p>Use esta ferramenta para unir um arquivo original e um arquivo com correções.</p>
+            <div class="nav-links">
+                <a href="{{ url_for('index') }}">&larr; Voltar para a conversão de PDF</a>
+            </div>
+        </header>
+
+        <div class="instructions">
+            <h3>Quando Usar Esta Ferramenta?</h3>
+            <p>
+                Esta funcionalidade é ideal para corrigir falhas em um arquivo HTML gerado pela conversão de PDF.
+            </p>
+            <p>
+                Se a sua conversão inicial resultou em <strong>páginas faltando ou com conteúdo incompleto</strong>, siga estes passos:
+            </p>
+            <ol>
+                <li>Volte para a <a href="{{ url_for('index') }}">página de conversão de PDF</a>.</li>
+                <li>Envie o mesmo PDF novamente, mas no campo <strong>"Páginas"</strong>, especifique <strong>apenas</strong> os números das páginas que apresentaram erro (ex: <code>4, 9-11</code>).</li>
+                <li>A conversão irá gerar um novo arquivo HTML menor, contendo somente as páginas reprocessadas.</li>
+                <li>Use o formulário abaixo para unir os arquivos:
+                    <ul>
+                        <li><strong>Arquivo HTML Original:</strong> Envie o arquivo grande gerado na primeira conversão (com as falhas).</li>
+                        <li><strong>Arquivo HTML com Correções:</strong> Envie o arquivo pequeno que você acabou de gerar.</li>
+                    </ul>
+                </li>
+            </ol>
+            <p>
+                O resultado será um arquivo HTML final, completo e corrigido, pronto para download.
+            </p>
+        </div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <form method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="original_file">1. Arquivo HTML Original (com falhas):</label>
+                <input type="file" id="original_file" name="original_file" accept=".html,.htm" required>
+            </div>
+
+            <div class="form-group">
+                <label for="corrections_file">2. Arquivo HTML com Correções (páginas reprocessadas):</label>
+                <input type="file" id="corrections_file" name="corrections_file" accept=".html,.htm" required>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Processar e Baixar</button>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

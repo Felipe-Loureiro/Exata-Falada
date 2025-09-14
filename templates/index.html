@@ -11,6 +11,9 @@
         <header>
             <h1>PDF para HTML Acessível</h1>
             <p>Use a IA do Gemini para converter seus PDFs</p>
+            <div class="nav-links">
+                <a href="{{ url_for('patch_html') }}">Ir para a ferramenta de Correção/Merge de HTML &rarr;</a>
+            </div>
         </header>
 
         {% if not api_key_set %}
