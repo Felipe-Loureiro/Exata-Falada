@@ -1,6 +1,6 @@
 """
 Modo de Armazenamento dos arquivos Input e Output
 "LOCAL" -> Arquivos são armazenados localmente
-"S3" -> Arquivos são armazenados no servidor AWS S3 (requer as chaves no .env)
+"BUCKET" -> Arquivos são armazenados no bucket AWS S3 ou Oracle Object Storage (requer as chaves no .env)
 """""
-MODE = "LOCAL"
+MODE = "BUCKET"

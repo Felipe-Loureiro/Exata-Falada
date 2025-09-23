@@ -15,6 +15,8 @@ import html  # For escaping HTML special characters in title
 import tempfile # Para gerenciar arquivos e diretórios temporários
 import boto3   # Importa boto3 aqui também
 from botocore.exceptions import ClientError
+from botocore.client import Config
+
 from config import MODE
 from dotenv import load_dotenv
 
@@ -1022,7 +1024,7 @@ document.addEventListener('DOMContentLoaded', () => {
             with open(output_path, "w", encoding="utf-8") as f: f.write(merged_html)
             return True
         except Exception as e: raise IOError(f"Falha ao escrever arquivo HTML: {e}")
-    elif MODE == "S3":
+    elif MODE == "BUCKET":
         try:
             html_bytes = merged_html.encode('utf-8')
             s3_client.put_object(Bucket=s3_bucket, Key=output_s3_key, Body=html_bytes, ContentType='text/html', ContentEncoding='utf-8')
@@ -1064,8 +1066,26 @@ def process_pdf_web(
     if MODE == "LOCAL":
         image_paths = []
         temp_image_dir = ""
-    elif MODE == "S3":
-        s3_client = boto3.client('s3', region_name=os.environ.get('S3_REGION'))
+    elif MODE == "BUCKET":
+        if os.environ.get('S3_BUCKET'):
+            s3_client = boto3.client('s3', region_name=os.environ.get('S3_REGION'))
+        elif os.environ.get('OCI_BUCKET'):
+            OCI_ENDPOINT_URL = os.environ.get('OCI_ENDPOINT_URL')
+            OCI_ACCESS_KEY_ID = os.environ.get('OCI_ACCESS_KEY_ID')
+            OCI_SECRET_ACCESS_KEY = os.environ.get('OCI_SECRET_ACCESS_KEY')
+            OCI_REGION = os.environ.get('OCI_REGION')
+            config = Config(
+                request_checksum_calculation="WHEN_REQUIRED",
+                response_checksum_validation="WHEN_REQUIRED"
+            )
+            s3_client = boto3.client(
+                's3',
+                region_name=OCI_REGION,
+                endpoint_url=OCI_ENDPOINT_URL,
+                aws_access_key_id=OCI_ACCESS_KEY_ID,
+                aws_secret_access_key=OCI_SECRET_ACCESS_KEY,
+                config=config
+            )
 
     uploaded_files_map = {}
 
@@ -1088,7 +1108,7 @@ def process_pdf_web(
 
         if MODE == "LOCAL":
             pdf_basename = os.path.splitext(os.path.basename(pdf_path))[0]
-        elif MODE == "S3":
+        elif MODE == "BUCKET":
             with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf_file:
                 status_callback(f"Baixando PDF do armazenamento: {s3_pdf_object_name}")
                 s3_client.download_fileobj(s3_bucket, s3_pdf_object_name, tmp_pdf_file)
@@ -1226,7 +1246,7 @@ def process_pdf_web(
 
         if MODE == "LOCAL":
             success_merge = create_merged_html_with_accessibility(generated_content_list_thread, pdf_basename, output_path=initial_output_html_path_base)
-        elif MODE == "S3":
+        elif MODE == "BUCKET":
             success_merge = create_merged_html_with_accessibility(generated_content_list_thread, pdf_basename, s3_client=s3_client,s3_bucket=s3_bucket, output_s3_key=output_s3_key)
         if not success_merge:
             raise Exception("Falha ao criar arquivo HTML mesclado.")
@@ -1234,7 +1254,7 @@ def process_pdf_web(
         success = True
         if MODE == "LOCAL":
             result_message = initial_output_html_path_base
-        elif MODE == "S3":
+        elif MODE == "BUCKET":
             result_message = output_s3_key
 
     except Exception as e:
@@ -1248,7 +1268,7 @@ def process_pdf_web(
             status_callback("Iniciando limpeza final de recursos...")
             phase_progress_callback(0, 1, "Limpando")
 
-            if MODE == "S3":
+            if MODE == "BUCKET":
                 if os.path.exists(tmp_pdf_path):
                     try:
                         os.remove(tmp_pdf_path)

@@ -3,6 +3,7 @@ import uuid
 import threading
 import boto3
 from botocore.exceptions import ClientError
+from botocore.client import Config
 from flask import Flask, render_template, request, jsonify, redirect, send_from_directory, flash, send_file
 from werkzeug.utils import secure_filename
 from processing import process_pdf_web, AVAILABLE_GEMINI_MODELS, DEFAULT_GEMINI_MODEL, API_KEY_ENV_VAR
@@ -31,17 +32,43 @@ if MODE == "LOCAL":
     # Garante que as pastas existam no servidor
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
-elif MODE == "S3":
+elif MODE == "BUCKET":
     # Carrega as configurações do S3 a partir de variáveis de ambiente
     S3_BUCKET = os.environ.get('S3_BUCKET')
     S3_REGION = os.environ.get('S3_REGION')
+    AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
+
+    OCI_BUCKET = os.environ.get('OCI_BUCKET')
+    OCI_ENDPOINT_URL = os.environ.get('OCI_ENDPOINT_URL')
+    OCI_ACCESS_KEY_ID = os.environ.get('OCI_ACCESS_KEY_ID')
+    OCI_SECRET_ACCESS_KEY = os.environ.get('OCI_SECRET_ACCESS_KEY')
+    OCI_REGION = os.environ.get('OCI_REGION')
 
     # Validação para garantir que as variáveis de ambiente foram configuradas
-    if not S3_BUCKET or not S3_REGION:
-        raise ValueError("As variáveis de ambiente S3_BUCKET e S3_REGION devem ser definidas.")
+    if not all([S3_BUCKET, S3_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY]):
+        if not all([OCI_BUCKET, OCI_ENDPOINT_URL, OCI_ACCESS_KEY_ID, OCI_SECRET_ACCESS_KEY, OCI_REGION]):
+            raise ValueError("As variáveis de ambiente AWS ou OCI devem ser definidas.")
+
+    if S3_BUCKET and OCI_BUCKET:
+        raise ValueError("Ambas as variáveis de ambiente AWS e OCI foram definidas.")
 
     # Instancia o cliente S3 uma vez para reutilização
-    s3_client = boto3.client('s3', region_name=S3_REGION)
+    if S3_BUCKET:
+        s3_client = boto3.client('s3', region_name=S3_REGION)
+    elif OCI_BUCKET:
+        config = Config(
+            request_checksum_calculation="WHEN_REQUIRED",
+            response_checksum_validation="WHEN_REQUIRED"
+        )
+        s3_client = boto3.client(
+            's3',
+            region_name=OCI_REGION,
+            endpoint_url=OCI_ENDPOINT_URL,
+            aws_access_key_id=OCI_ACCESS_KEY_ID,
+            aws_secret_access_key=OCI_SECRET_ACCESS_KEY,
+            config = config
+        )
 
 # --- Armazenamento de Tarefas em Memória ---
 # ATENÇÃO: Este dicionário será resetado se o servidor for reiniciado.
@@ -73,7 +100,7 @@ def index():
             filename = secure_filename(file.filename)
             pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(pdf_path)
-        elif MODE == "S3":
+        elif MODE == "BUCKET":
             # --- LÓGICA DE UPLOAD PARA O S3 ---
             original_filename = secure_filename(file.filename)
             # Cria um nome de objeto único no S3 para evitar colisões
@@ -81,9 +108,12 @@ def index():
 
             try:
                 # Faz o upload do arquivo diretamente do stream da requisição para o S3
-                s3_client.upload_fileobj(file, S3_BUCKET, s3_pdf_object_name)
+                if S3_BUCKET:
+                    s3_client.upload_fileobj(file, S3_BUCKET, s3_pdf_object_name)
+                elif OCI_BUCKET:
+                    s3_client.upload_fileobj(file, OCI_BUCKET, s3_pdf_object_name)
             except ClientError as e:
-                app.logger.error(f"Erro no upload para o S3: {e}")
+                app.logger.error(f"Erro no upload para o Bucket: {e}")
                 return jsonify({'error': 'Falha ao salvar o arquivo no armazenamento externo.'}), 500
 
         # 3. Obter parâmetros do formulário
@@ -98,7 +128,7 @@ def index():
         if MODE == "LOCAL":
             output_filename = f"{os.path.splitext(filename)[0]}_{task_id[:8]}.html"
             output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
-        elif MODE == "S3":
+        elif MODE == "BUCKET":
             # O nome do arquivo de saída agora é apenas uma referência, será a chave no S3
             output_s3_key = f"outputs/{os.path.splitext(original_filename)[0]}_{task_id[:8]}.html"
 
@@ -115,7 +145,7 @@ def index():
                 'output_filename': None,
                 'cancel_event': cancel_event
             }
-        elif MODE == "S3":
+        elif MODE == "BUCKET":
             TASKS[task_id] = {
                 'status': 'Iniciando...', 'progress': 0, 'total': 100, 'log': [],
                 'is_complete': False, 'success': None,
@@ -139,7 +169,7 @@ def index():
                 if MODE == "LOCAL":
                     TASKS[task_id]['output_path'] = output_path
                     TASKS[task_id]['output_filename'] = output_filename
-                elif MODE == "S3":
+                elif MODE == "BUCKET":
                     TASKS[task_id]['output_s3_key'] = output_s3_key
                 TASKS[task_id]['status'] = "Concluído com Sucesso!"
             else:
@@ -156,15 +186,25 @@ def index():
                     None, None, None, pdf_path, output_path
                 )
             )
-        elif MODE == "S3":
-            thread = threading.Thread(
-                target=process_pdf_web,
-                args=(
-                    dpi, page_range, model, upload_workers, generate_workers, cancel_event,
-                    status_callback, completion_callback, progress_callback,
-                    S3_BUCKET, s3_pdf_object_name, output_s3_key, None, None
+        elif MODE == "BUCKET":
+            if S3_BUCKET:
+                thread = threading.Thread(
+                    target=process_pdf_web,
+                    args=(
+                        dpi, page_range, model, upload_workers, generate_workers, cancel_event,
+                        status_callback, completion_callback, progress_callback,
+                        S3_BUCKET, s3_pdf_object_name, output_s3_key, None, None
+                    )
                 )
-            )
+            elif OCI_BUCKET:
+                thread = threading.Thread(
+                    target=process_pdf_web,
+                    args=(
+                        dpi, page_range, model, upload_workers, generate_workers, cancel_event,
+                        status_callback, completion_callback, progress_callback,
+                        OCI_BUCKET, s3_pdf_object_name, output_s3_key, None, None
+                    )
+                )
         thread.daemon = True
         thread.start()
 
@@ -193,7 +233,7 @@ def task_status(task_id):
             'success': task['success'],
             'output_filename': task['output_filename']
         })
-    elif MODE == "S3":
+    elif MODE == "BUCKET":
         return jsonify({
             'status': task['status'], 'progress': task['progress'], 'total': task['total'],
             'log': task['log'], 'is_complete': task['is_complete'], 'success': task['success'],
@@ -210,7 +250,7 @@ def download_file(task_id):
     if MODE == "LOCAL":
         filename = task['output_filename']
         return send_from_directory(app.config["OUTPUT_FOLDER"], filename, as_attachment=True)
-    elif MODE == "S3":
+    elif MODE == "BUCKET":
         task = TASKS.get(task_id)
         if not task or not task.get('is_complete') or not task.get('success'):
             return "Tarefa não encontrada ou não concluída.", 404
@@ -225,11 +265,19 @@ def download_file(task_id):
             download_filename = os.path.basename(output_s3_key)
 
             # Gera uma URL de download temporária e segura (válida por 5 minutos)
-            url = s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': S3_BUCKET, 'Key': output_s3_key, 'ResponseContentDisposition': f'attachment; filename="{download_filename}"'},
-                ExpiresIn=300
-            )
+            if S3_BUCKET:
+                url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': S3_BUCKET, 'Key': output_s3_key, 'ResponseContentDisposition': f'attachment; filename="{download_filename}"'},
+                    ExpiresIn=300
+                )
+            elif OCI_BUCKET:
+                url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': OCI_BUCKET, 'Key': output_s3_key,
+                            'ResponseContentDisposition': f'attachment; filename="{download_filename}"'},
+                    ExpiresIn=300
+                )
             # Redireciona o navegador do usuário para a URL do S3
             return redirect(url)
         except ClientError as e:
@@ -314,10 +362,6 @@ if __name__ == '__main__':
         for folder in [UPLOAD_FOLDER, OUTPUT_FOLDER, 'temp_processing']:
             if not os.path.exists(folder):
                 os.makedirs(folder)
-    elif MODE == "S3":
-        # Garante que a chave da AWS está configurada, se não, não inicia
-        if not os.environ.get('AWS_ACCESS_KEY_ID') or not os.environ.get('AWS_SECRET_ACCESS_KEY'):
-            raise ValueError("Credenciais da AWS (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) não definidas.")
     app.run(debug=True, host='0.0.0.0')
 
 """ Para um deploy em produção, você usaria um servidor WSGI como o Gunicorn:
