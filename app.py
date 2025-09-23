@@ -2,6 +2,7 @@ import os
 import uuid
 import threading
 import boto3
+import json
 from botocore.exceptions import ClientError
 from botocore.client import Config
 from flask import Flask, render_template, request, jsonify, redirect, send_from_directory, flash, send_file
@@ -12,6 +13,9 @@ from dotenv import load_dotenv
 from io import BytesIO  # Importe BytesIO para manipulação em memória
 from patcher import patch_html_files  # Importe a nova função
 
+# --- IMPORTAÇÕES DO BANCO DE DADOS ---
+import database
+
 load_dotenv()
 
 # --- Configuração do Flask ---
@@ -19,6 +23,10 @@ ALLOWED_EXTENSIONS = {'pdf'}
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # Limite de 50 MB para upload
 app.secret_key = os.urandom(24)  # NECESSÁRIO para usar o sistema de mensagens 'flash'
+
+# --- INICIALIZAÇÃO DO BANCO DE DADOS ---
+# Garante que o arquivo do banco de dados e a tabela sejam criados na inicialização
+database.init_db()
 
 
 if MODE == "LOCAL":
@@ -70,10 +78,9 @@ elif MODE == "BUCKET":
             config = config
         )
 
-# --- Armazenamento de Tarefas em Memória ---
-# ATENÇÃO: Este dicionário será resetado se o servidor for reiniciado.
-# Para produção persistente, seria necessário um banco de dados (SQLite, etc.)
-TASKS = {}
+# --- Armazenamento de Eventos de Cancelamento em Memória ---
+# Estes objetos não podem ser salvos no banco de dados.
+CANCEL_EVENTS = {}
 
 
 def allowed_file(filename):
@@ -95,6 +102,7 @@ def index():
         if file.filename == '' or not allowed_file(file.filename):
             return jsonify({'error': 'Arquivo inválido ou extensão não permitida'}), 400
 
+        pdf_path, s3_pdf_object_name, original_filename = None, None, None
         if MODE == "LOCAL":
             # 2. Salvar o arquivo no servidor
             filename = secure_filename(file.filename)
@@ -125,6 +133,10 @@ def index():
 
         # 4. Criar e registrar a tarefa
         task_id = str(uuid.uuid4())
+        database.create_task(task_id)
+        CANCEL_EVENTS[task_id] = threading.Event()
+
+        output_path, output_s3_key = None, None
         if MODE == "LOCAL":
             output_filename = f"{os.path.splitext(filename)[0]}_{task_id[:8]}.html"
             output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
@@ -132,79 +144,44 @@ def index():
             # O nome do arquivo de saída agora é apenas uma referência, será a chave no S3
             output_s3_key = f"outputs/{os.path.splitext(original_filename)[0]}_{task_id[:8]}.html"
 
-        cancel_event = threading.Event()
-        if MODE == "LOCAL":
-            TASKS[task_id] = {
-                'status': 'Iniciando...',
-                'progress': 0,
-                'total': 100,
-                'log': [],
-                'is_complete': False,
-                'success': None,
-                'output_path': None,
-                'output_filename': None,
-                'cancel_event': cancel_event
-            }
-        elif MODE == "BUCKET":
-            TASKS[task_id] = {
-                'status': 'Iniciando...', 'progress': 0, 'total': 100, 'log': [],
-                'is_complete': False, 'success': None,
-                'output_s3_key': None,  # Armazena a chave do S3 em vez do caminho local
-                'cancel_event': cancel_event
-            }
-
         # 5. Definir callbacks para atualizar o estado da tarefa
         def status_callback(msg):
-            TASKS[task_id]['log'].append(msg)
+            database.append_to_log(task_id, msg)
 
         def progress_callback(val, total, phase_text):
-            TASKS[task_id]['progress'] = val
-            TASKS[task_id]['total'] = total
-            TASKS[task_id]['status'] = phase_text
+            database.update_task_progress(task_id, val, total, phase_text)
 
         def completion_callback(success, result_msg):
-            TASKS[task_id]['is_complete'] = True
-            TASKS[task_id]['success'] = success
+            output_info = {}
             if success:
                 if MODE == "LOCAL":
-                    TASKS[task_id]['output_path'] = output_path
-                    TASKS[task_id]['output_filename'] = output_filename
+                    output_info = {'output_path': output_path, 'output_filename': output_filename}
                 elif MODE == "BUCKET":
-                    TASKS[task_id]['output_s3_key'] = output_s3_key
-                TASKS[task_id]['status'] = "Concluído com Sucesso!"
-            else:
-                TASKS[task_id]['status'] = f"Falha: {result_msg}"
+                    output_info = {'output_s3_key': output_s3_key}
+
+            database.update_task_completion(task_id, success, result_msg, output_info)
+
+            # Limpa o evento de cancelamento da memória quando a tarefa termina
+            if task_id in CANCEL_EVENTS:
+                del CANCEL_EVENTS[task_id]
 
         # 6. Iniciar a thread de processamento
+        thread_args_dict = {
+            "dpi": dpi, "page_range_str": page_range, "selected_model_name": model,
+            "num_upload_workers": upload_workers, "num_generate_workers": generate_workers,
+            "cancel_event": CANCEL_EVENTS[task_id],
+            "status_callback": status_callback, "completion_callback": completion_callback,
+            "progress_callback": progress_callback
+        }
+
         if MODE == "LOCAL":
-            thread = threading.Thread(
-                target=process_pdf_web,
-                args=(
-                    dpi, page_range, model,
-                    upload_workers, generate_workers, cancel_event,
-                    status_callback, completion_callback, progress_callback,
-                    None, None, None, pdf_path, output_path
-                )
-            )
+            thread_args_dict.update({"pdf_path": pdf_path, "initial_output_html_path_base": output_path})
         elif MODE == "BUCKET":
-            if S3_BUCKET:
-                thread = threading.Thread(
-                    target=process_pdf_web,
-                    args=(
-                        dpi, page_range, model, upload_workers, generate_workers, cancel_event,
-                        status_callback, completion_callback, progress_callback,
-                        S3_BUCKET, s3_pdf_object_name, output_s3_key, None, None
-                    )
-                )
-            elif OCI_BUCKET:
-                thread = threading.Thread(
-                    target=process_pdf_web,
-                    args=(
-                        dpi, page_range, model, upload_workers, generate_workers, cancel_event,
-                        status_callback, completion_callback, progress_callback,
-                        OCI_BUCKET, s3_pdf_object_name, output_s3_key, None, None
-                    )
-                )
+            bucket_name = S3_BUCKET if S3_BUCKET else OCI_BUCKET
+            thread_args_dict.update(
+                {"s3_bucket": bucket_name, "s3_pdf_object_name": s3_pdf_object_name, "output_s3_key": output_s3_key})
+
+        thread = threading.Thread(target=process_pdf_web, kwargs=thread_args_dict)
         thread.daemon = True
         thread.start()
 
@@ -218,44 +195,42 @@ def index():
 
 @app.route('/status/<task_id>')
 def task_status(task_id):
-    task = TASKS.get(task_id)
-    if not task:
+    task_row = database.get_task(task_id)
+    if not task_row:
         return jsonify({'error': 'Tarefa não encontrada'}), 404
 
+    # Converte a linha do banco de dados em um dicionário e decodifica o log
+    task_dict = dict(task_row)
+    task_dict['log'] = json.loads(task_dict['log'])
+
     # Retorna o estado atual da tarefa
+    response_data = {
+        'status': task_dict['status'],
+        'progress': task_dict['progress'],
+        'total': task_dict['total'],
+        'log': task_dict['log'],
+        'is_complete': bool(task_dict['is_complete']),
+        'success': bool(task_dict['success']) if task_dict['success'] is not None else None,
+    }
     if MODE == "LOCAL":
-        return jsonify({
-            'status': task['status'],
-            'progress': task['progress'],
-            'total': task['total'],
-            'log': task['log'],
-            'is_complete': task['is_complete'],
-            'success': task['success'],
-            'output_filename': task['output_filename']
-        })
+        response_data['output_filename'] = task_dict['output_filename']
     elif MODE == "BUCKET":
-        return jsonify({
-            'status': task['status'], 'progress': task['progress'], 'total': task['total'],
-            'log': task['log'], 'is_complete': task['is_complete'], 'success': task['success'],
-            'output_s3_key': task['output_s3_key']  # Envia a chave S3 para o front-end
-        })
-    return None
+        response_data['output_s3_key'] = task_dict['output_s3_key']
+
+    return jsonify(response_data)
 
 
 @app.route('/download/<task_id>')
 def download_file(task_id):
-    task = TASKS.get(task_id)
-    if not task:
-        return jsonify({'error': 'Tarefa não encontrada'}), 404
+    task = database.get_task(task_id)
+    if not task or not task['is_complete'] or not task['success']:
+        return "Tarefa não encontrada, não concluída ou falhou.", 404
+
     if MODE == "LOCAL":
         filename = task['output_filename']
         return send_from_directory(app.config["OUTPUT_FOLDER"], filename, as_attachment=True)
     elif MODE == "BUCKET":
-        task = TASKS.get(task_id)
-        if not task or not task.get('is_complete') or not task.get('success'):
-            return "Tarefa não encontrada ou não concluída.", 404
-
-        output_s3_key = task.get('output_s3_key')
+        output_s3_key = task['output_s3_key']
         if not output_s3_key:
             return "Arquivo de saída não encontrado.", 404
 
@@ -265,37 +240,33 @@ def download_file(task_id):
             download_filename = os.path.basename(output_s3_key)
 
             # Gera uma URL de download temporária e segura (válida por 5 minutos)
-            if S3_BUCKET:
-                url = s3_client.generate_presigned_url(
-                    'get_object',
-                    Params={'Bucket': S3_BUCKET, 'Key': output_s3_key, 'ResponseContentDisposition': f'attachment; filename="{download_filename}"'},
-                    ExpiresIn=300
-                )
-            elif OCI_BUCKET:
-                url = s3_client.generate_presigned_url(
-                    'get_object',
-                    Params={'Bucket': OCI_BUCKET, 'Key': output_s3_key,
-                            'ResponseContentDisposition': f'attachment; filename="{download_filename}"'},
-                    ExpiresIn=300
-                )
-            # Redireciona o navegador do usuário para a URL do S3
+            bucket_name = S3_BUCKET if S3_BUCKET else OCI_BUCKET
+            url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': bucket_name, 'Key': output_s3_key,
+                        'ResponseContentDisposition': f'attachment; filename="{download_filename}"'},
+                ExpiresIn=300
+            )
             return redirect(url)
         except ClientError as e:
-            app.logger.error(f"Erro ao gerar URL presignada do S3: {e}")
+            app.logger.error(f"Erro ao gerar URL presignada: {e}")
             return "Não foi possível gerar o link para download.", 500
     return None
 
 
 @app.route('/cancel/<task_id>', methods=['POST'])
 def cancel_task(task_id):
-    task = TASKS.get(task_id)
+    task = database.get_task(task_id)
     if not task:
         return jsonify({'error': 'Tarefa não encontrada'}), 404
 
     if not task['is_complete']:
-        task['cancel_event'].set()
-        task['status'] = 'Cancelamento solicitado...'
-        return jsonify({'message': 'Cancelamento solicitado'})
+        if task_id in CANCEL_EVENTS:
+            CANCEL_EVENTS[task_id].set()
+            database.update_task_progress(task_id, task['progress'], task['total'], 'Cancelamento solicitado...')
+            return jsonify({'message': 'Cancelamento solicitado'})
+        else:
+            return jsonify({'message': 'Não foi possível cancelar a tarefa (já concluída ou reiniciada).'})
 
     return jsonify({'message': 'A tarefa já foi concluída'})
 
