@@ -78,10 +78,6 @@ elif MODE == "BUCKET":
             config = config
         )
 
-# --- Armazenamento de Eventos de Cancelamento em Memória ---
-# Estes objetos não podem ser salvos no banco de dados.
-CANCEL_EVENTS = {}
-
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -134,7 +130,6 @@ def index():
         # 4. Criar e registrar a tarefa
         task_id = str(uuid.uuid4())
         database.create_task(task_id)
-        CANCEL_EVENTS[task_id] = threading.Event()
 
         output_path, output_s3_key = None, None
         if MODE == "LOCAL":
@@ -161,15 +156,11 @@ def index():
 
             database.update_task_completion(task_id, success, result_msg, output_info)
 
-            # Limpa o evento de cancelamento da memória quando a tarefa termina
-            if task_id in CANCEL_EVENTS:
-                del CANCEL_EVENTS[task_id]
-
         # 6. Iniciar a thread de processamento
         thread_args_dict = {
             "dpi": dpi, "page_range_str": page_range, "selected_model_name": model,
             "num_upload_workers": upload_workers, "num_generate_workers": generate_workers,
-            "cancel_event": CANCEL_EVENTS[task_id],
+            "task_id": task_id,
             "status_callback": status_callback, "completion_callback": completion_callback,
             "progress_callback": progress_callback
         }
@@ -261,12 +252,9 @@ def cancel_task(task_id):
         return jsonify({'error': 'Tarefa não encontrada'}), 404
 
     if not task['is_complete']:
-        if task_id in CANCEL_EVENTS:
-            CANCEL_EVENTS[task_id].set()
-            database.update_task_progress(task_id, task['progress'], task['total'], 'Cancelamento solicitado...')
-            return jsonify({'message': 'Cancelamento solicitado'})
-        else:
-            return jsonify({'message': 'Não foi possível cancelar a tarefa (já concluída ou reiniciada).'})
+        database.request_cancel(task_id)
+        database.update_task_progress(task_id, task['progress'], task['total'], 'Cancelamento solicitado...')
+        return jsonify({'message': 'Cancelamento solicitado'})
 
     return jsonify({'message': 'A tarefa já foi concluída'})
 
@@ -336,5 +324,5 @@ if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
 
 """ Para um deploy em produção, você usaria um servidor WSGI como o Gunicorn:
-gunicorn --workers 3 --threads 4 --bind 0.0.0.0:8000 app:app
+gunicorn --workers 3 --threads 4 --timeout 300 --bind 0.0.0.0:5000 app:app
 O uso de --threads é importante aqui, pois permite que o servidor lide com as requisições de status enquanto as threads de trabalho estão ocupadas processando os PDFs. """

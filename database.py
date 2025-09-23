@@ -35,7 +35,8 @@ def init_db():
                 output_path TEXT,
                 output_filename TEXT,
                 output_s3_key TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                cancel_requested INTEGER DEFAULT 0
             )
         ''')
         conn.commit()
@@ -112,6 +113,20 @@ def update_task_completion(task_id, success, result_msg, output_info):
                 (int(success), final_status, output_info['output_s3_key'], task_id)
             )
         conn.commit()
+
+
+def request_cancel(task_id):
+    """Marca uma tarefa para ser cancelada."""
+    with get_db_connection() as conn:
+        conn.execute('UPDATE tasks SET cancel_requested = 1 WHERE id = ?', (task_id,))
+        conn.commit()
+
+
+def is_task_cancelled(task_id):
+    """Verifica se o cancelamento foi solicitado para uma tarefa."""
+    with get_db_connection() as conn:
+        result = conn.execute('SELECT cancel_requested FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        return result and result['cancel_requested'] == 1
 
 
 # Chame esta função uma vez ao iniciar a aplicação para garantir que a tabela exista.

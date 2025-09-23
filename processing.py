@@ -19,6 +19,7 @@ from botocore.client import Config
 
 from config import MODE
 from dotenv import load_dotenv
+from database import is_task_cancelled
 
 load_dotenv()
 
@@ -77,7 +78,7 @@ def parse_page_ranges(page_range_str: str, total_pages: int) -> list[int] | None
     return sorted(list(indices))
 
 
-def gemini_api_call_with_retry(api_function, cancel_event, status_callback, *args, **kwargs):
+def gemini_api_call_with_retry(api_function, task_id, status_callback, *args, **kwargs):
     retries = 0
     backoff_time = INITIAL_BACKOFF
     retryable_exceptions = (
@@ -87,7 +88,7 @@ def gemini_api_call_with_retry(api_function, cancel_event, status_callback, *arg
         google_exceptions.InternalServerError
     )
     while retries <= MAX_RETRIES_PER_CALL:
-        if cancel_event.is_set(): raise OperationCancelledError("Operação cancelada durante retentativa API.")
+        if is_task_cancelled(task_id): raise OperationCancelledError("Operação cancelada durante retentativa API.")
         try:
             return api_function(*args, **kwargs)
         except retryable_exceptions as e:
@@ -98,7 +99,7 @@ def gemini_api_call_with_retry(api_function, cancel_event, status_callback, *arg
             status_callback(
                 f"  Erro API ({type(e).__name__}): {e}. Retentativa {retries}/{MAX_RETRIES_PER_CALL} em {backoff_time}s...")
             for _ in range(int(backoff_time)):
-                if cancel_event.is_set(): raise OperationCancelledError("Cancelado durante espera retentativa.")
+                if is_task_cancelled(task_id): raise OperationCancelledError("Cancelado durante espera retentativa.")
                 time.sleep(1)
             backoff_time = min(backoff_time * 2, MAX_BACKOFF)
         except google_exceptions.ResourceExhausted as re_e:
@@ -109,7 +110,7 @@ def gemini_api_call_with_retry(api_function, cancel_event, status_callback, *arg
             raise
 
 
-def pdf_to_images_local(pdf_path, output_dir, dpi, selected_pages, cancel_event, status_callback, progress_callback):
+def pdf_to_images_local(pdf_path, output_dir, dpi, selected_pages, task_id, status_callback, progress_callback):
     image_paths = []
     os.makedirs(output_dir, exist_ok=True)
     doc = None
@@ -122,7 +123,7 @@ def pdf_to_images_local(pdf_path, output_dir, dpi, selected_pages, cancel_event,
         total_selected_pages = len(selected_pages)
         status_callback(f"Convertendo {total_selected_pages} págs PDF para imagens (DPI: {dpi})...")
         for i, page_num_0_indexed in enumerate(selected_pages):
-            if cancel_event.is_set(): raise OperationCancelledError("Conversão PDF->Imagem cancelada.")
+            if is_task_cancelled(task_id): raise OperationCancelledError("Conversão PDF->Imagem cancelada.")
             page = doc.load_page(page_num_0_indexed)
             zoom = dpi / 72.0
             mat = fitz.Matrix(zoom, zoom)
@@ -143,17 +144,17 @@ def pdf_to_images_local(pdf_path, output_dir, dpi, selected_pages, cancel_event,
         if doc: doc.close()
 
 
-def _upload_single_image_task(image_path, display_name, mime_type, cancel_event, status_callback_main_thread):
-    if cancel_event.is_set(): raise OperationCancelledError("Upload de imagem individual cancelado antes de iniciar.")
+def _upload_single_image_task(image_path, display_name, mime_type, task_id, status_callback_main_thread):
+    if is_task_cancelled(task_id): raise OperationCancelledError("Upload de imagem individual cancelado antes de iniciar.")
     try:
         file_to_upload = gemini_api_call_with_retry(
-            genai.upload_file, cancel_event, status_callback_main_thread,
+            genai.upload_file, task_id, status_callback_main_thread,
             path=image_path, display_name=display_name, mime_type=mime_type
         )
         # O novo SDK pode não precisar deste loop de verificação, mas é bom mantê-lo por robustez
         processing_start_time = time.time()
         while file_to_upload.state.name == "PROCESSING":
-            if cancel_event.is_set():
+            if is_task_cancelled(task_id):
                 try:
                     status_callback_main_thread(f"  Cancelamento. Deletando {file_to_upload.name} em processamento...")
                     genai.delete_file(file_to_upload.name)
@@ -170,7 +171,7 @@ def _upload_single_image_task(image_path, display_name, mime_type, cancel_event,
                     pass
                 return image_path, None
             time.sleep(2)  # Check status
-            file_to_upload = gemini_api_call_with_retry(genai.get_file, cancel_event, status_callback_main_thread,
+            file_to_upload = gemini_api_call_with_retry(genai.get_file, task_id, status_callback_main_thread,
                                                         name=file_to_upload.name)
 
         if file_to_upload.state.name == "ACTIVE":
@@ -191,7 +192,7 @@ def _upload_single_image_task(image_path, display_name, mime_type, cancel_event,
         return image_path, None
 
 
-def upload_to_gemini_file_api(image_paths_to_upload, num_upload_workers, cancel_event, status_callback,
+def upload_to_gemini_file_api(image_paths_to_upload, num_upload_workers, task_id, status_callback,
                               progress_callback):
     successfully_uploaded_map = {}
     pdf_base_name = "document" # Default
@@ -208,7 +209,7 @@ def upload_to_gemini_file_api(image_paths_to_upload, num_upload_workers, cancel_
     current_image_paths = list(image_paths_to_upload)
 
     for attempt in range(PHASE_MAX_RETRIES + 1):
-        if not current_image_paths or cancel_event.is_set(): break
+        if not current_image_paths or is_task_cancelled(task_id): break
         total_in_this_attempt = len(current_image_paths)
         if attempt > 0:
             status_callback(
@@ -234,7 +235,7 @@ def upload_to_gemini_file_api(image_paths_to_upload, num_upload_workers, cancel_
 
         if not tasks_to_submit_this_round and failed_in_this_attempt: # All failed due to MIME
             current_image_paths = failed_in_this_attempt
-            if not current_image_paths or cancel_event.is_set(): break
+            if not current_image_paths or is_task_cancelled(task_id): break
             continue # Go to next phase retry if any left
 
         if not tasks_to_submit_this_round and not failed_in_this_attempt: # No tasks at all
@@ -244,11 +245,11 @@ def upload_to_gemini_file_api(image_paths_to_upload, num_upload_workers, cancel_
             future_to_path = {
                 executor.submit(_upload_single_image_task, task_info['path'],
                                 f"{pdf_base_name} - {os.path.basename(task_info['path'])}",
-                                task_info['mime'], cancel_event, status_callback): task_info['path']
+                                task_info['mime'], task_id, status_callback): task_info['path']
                 for task_info in tasks_to_submit_this_round
             }
             for future in concurrent.futures.as_completed(future_to_path):
-                if cancel_event.is_set(): break
+                if is_task_cancelled(task_id): break
                 original_path = future_to_path[future]
                 try:
                     returned_path, file_object = future.result()
@@ -271,9 +272,9 @@ def upload_to_gemini_file_api(image_paths_to_upload, num_upload_workers, cancel_
                                       f"Upload imagem {processed_for_progress_bar_this_attempt}/{total_in_this_attempt}")
 
         current_image_paths = failed_in_this_attempt
-        if not current_image_paths or cancel_event.is_set(): break
+        if not current_image_paths or is_task_cancelled(task_id): break
 
-    if cancel_event.is_set(): raise OperationCancelledError("Upload de imagens cancelado.")
+    if is_task_cancelled(task_id): raise OperationCancelledError("Upload de imagens cancelado.")
 
     total_initial_images = len(image_paths_to_upload)
     if len(successfully_uploaded_map) < total_initial_images and total_initial_images > 0:
@@ -444,9 +445,9 @@ def extract_html_from_response(response_text: str) -> str | None:
     return None
 
 
-def generate_html_for_image_task(model_name, file_object_from_api, page_filename_local, local_img_path, cancel_event,
+def generate_html_for_image_task(model_name, file_object_from_api, page_filename_local, local_img_path, task_id,
                                  status_callback_main_thread, current_page_num_in_doc, original_page_order_index):
-    if cancel_event.is_set(): raise OperationCancelledError("Geração HTML (task) cancelada antes de iniciar.")
+    if is_task_cancelled(task_id): raise OperationCancelledError("Geração HTML (task) cancelada antes de iniciar.")
 
     base64_image_data = None
     try:
@@ -485,14 +486,14 @@ def generate_html_for_image_task(model_name, file_object_from_api, page_filename
     html_body = None
 
     try:
-        response = gemini_api_call_with_retry(model.generate_content, cancel_event, status_callback_main_thread,
+        response = gemini_api_call_with_retry(model.generate_content, task_id, status_callback_main_thread,
                                               contents=prompt_parts, generation_config=generation_config)
     except Exception as e:
         status_callback_main_thread(
             f"  Exceção na API Gemini para {page_filename_local} (pág {current_page_num_in_doc}): {type(e).__name__} - {e}")
         return original_page_order_index, current_page_num_in_doc, None, base64_image_data, None  # Retorna None para motivo
 
-    if cancel_event.is_set(): raise OperationCancelledError("Geração HTML (task) cancelada após chamada API.")
+    if is_task_cancelled(task_id): raise OperationCancelledError("Geração HTML (task) cancelada após chamada API.")
 
     if response and response.candidates:
         # Pega o motivo de finalização para análise posterior
@@ -1057,7 +1058,7 @@ def cleanup_api_files(files_to_delete, status_callback_func):
 def process_pdf_web(
         dpi, page_range_str, selected_model_name,
         num_upload_workers, num_generate_workers,
-        cancel_event, status_callback, completion_callback, progress_callback,
+        task_id, status_callback, completion_callback, progress_callback,
         s3_bucket=None, s3_pdf_object_name=None, output_s3_key=None, pdf_path=None, initial_output_html_path_base=None
 ):
     success = False
@@ -1132,15 +1133,15 @@ def process_pdf_web(
         selected_pages_0_indexed = parse_page_ranges(page_range_str, total_doc_pages)
         if selected_pages_0_indexed is None: raise ValueError(f"Intervalo de páginas inválido: '{page_range_str}'.")
 
-        image_paths = pdf_to_images_local(pdf_path, temp_image_dir, dpi, selected_pages_0_indexed, cancel_event,
+        image_paths = pdf_to_images_local(pdf_path, temp_image_dir, dpi, selected_pages_0_indexed, task_id,
                                           status_callback, phase_progress_callback)
         if not image_paths: raise Exception("Falha ao converter PDF para imagens.")
-        if cancel_event.is_set(): raise OperationCancelledError("Cancelado após conversão.")
+        if is_task_cancelled(task_id): raise OperationCancelledError("Cancelado após conversão.")
 
-        uploaded_files_map = upload_to_gemini_file_api(image_paths, num_upload_workers, cancel_event, status_callback,
+        uploaded_files_map = upload_to_gemini_file_api(image_paths, num_upload_workers, task_id, status_callback,
                                                        phase_progress_callback)
         if not uploaded_files_map: raise Exception("Falha ao fazer upload de imagens para API Gemini.")
-        if cancel_event.is_set(): raise OperationCancelledError("Cancelado após upload.")
+        if is_task_cancelled(task_id): raise OperationCancelledError("Cancelado após upload.")
 
         # --- Início da Lógica de Geração de HTML (Substituindo a simulação) ---
         num_files_successfully_uploaded = len(uploaded_files_map)
@@ -1166,7 +1167,7 @@ def process_pdf_web(
                 continue
 
             task_args = (file_api_object, os.path.basename(local_img_path),
-                         local_img_path, cancel_event, status_callback, page_num_in_doc, original_order_idx)
+                         local_img_path, task_id, status_callback, page_num_in_doc, original_order_idx)
             tasks_for_html_generation.append({
                 'args': task_args,
                 'original_idx': original_order_idx,
@@ -1177,7 +1178,7 @@ def process_pdf_web(
         current_html_tasks_for_retry_phase = list(tasks_for_html_generation)
 
         for attempt in range(PHASE_MAX_RETRIES + 1):
-            if not current_html_tasks_for_retry_phase or cancel_event.is_set(): break
+            if not current_html_tasks_for_retry_phase or is_task_cancelled(task_id): break
             total_in_this_attempt = len(current_html_tasks_for_retry_phase)
             if attempt > 0:
                 status_callback(
@@ -1193,7 +1194,7 @@ def process_pdf_web(
                     for task_info in current_html_tasks_for_retry_phase
                 }
                 for future in concurrent.futures.as_completed(future_to_task_info):
-                    if cancel_event.is_set(): break
+                    if is_task_cancelled(task_id): break
                     original_task_info = future_to_task_info[future]
                     idx_for_assignment = original_task_info['original_idx']
 
@@ -1224,9 +1225,9 @@ def process_pdf_web(
                         phase_progress_callback(completed_in_this_attempt, total_in_this_attempt, "Gerando HTML")
 
             current_html_tasks_for_retry_phase = failed_tasks_for_next_round
-            if not current_html_tasks_for_retry_phase or cancel_event.is_set(): break
+            if not current_html_tasks_for_retry_phase or is_task_cancelled(task_id): break
 
-        if cancel_event.is_set(): raise OperationCancelledError("Cancelado durante geração HTML.")
+        if is_task_cancelled(task_id): raise OperationCancelledError("Cancelado durante geração HTML.")
 
         generated_content_list_thread = [res for res in temp_generated_html_results if res is not None]
 
