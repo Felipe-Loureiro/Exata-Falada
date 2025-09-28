@@ -874,6 +874,31 @@ function playQueue() {
     }
 }
 
+function speakFromVisible() {
+    stopSpeech();
+
+    const rootNode = document.getElementById('main-content') || document.body;
+    speechQueue = extractContentWithSemantics(rootNode);
+
+    if (speechQueue.length === 0) return;
+
+    let startIndex = 0;
+    for (let i = 0; i < speechQueue.length; i++) {
+        const el = speechQueue[i].element;
+        if (el) {
+            const rect = el.getBoundingClientRect();
+            
+            if (rect.top < window.innerHeight && rect.bottom > 0) {
+                startIndex = i;
+                break;
+            }
+        }
+    }
+
+    currentSegmentIndex = startIndex;
+    playQueue();
+}
+
 function pauseSpeech() {
     if (synth.speaking && !synth.paused) {
         userInitiatedPause = true;
@@ -1076,6 +1101,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="control-group">
             <span>Leitura em Voz Alta:</span>
             <button onclick="speakText()" aria-label="Ler ou continuar leitura">▶️ Ler/Continuar</button>
+            <button onclick="speakFromVisible()" aria-label="Ler a partir do texto visível">🎯 Ler daqui</button>
             <button onclick="pauseSpeech()" aria-label="Pausar leitura">⏸️ Pausar</button>
             <button onclick="stopSpeech()" aria-label="Parar leitura (Tecla Esc)">⏹️ Parar (Esc)</button>
         </div>
