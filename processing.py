@@ -401,7 +401,7 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
     * Identify significant diagrams, graphs, figures, or images relevant to the academic content. **DO NOT** describe purely decorative elements like logos that are not relevant to the understanding of the text.
     * **Instead of including the image itself, provide a concise textual description** in Portuguese, wrapped in `<p><em>...</em></p>`. The description should explain what the visual element shows and its relevance.
     * In the case of a bar code, QR code, or similar, **ALWAYS** indicate that it is there and describe its purpose using the `<p><em>...</em></p>` tag.
-    * Example: `<p><em>[Descrição: Diagrama de um circuito elétrico RLC em série, mostrando a fonte de tensão, o resistor R, o indutor L e o capacitor C.]</em></p>`.
+    * Example: `<p><em>[Descrição da imagem: Diagrama de um circuito elétrico RLC em série, mostrando a fonte de tensão, o resistor R, o indutor L e o capacitor C.]</em></p>`.
 
 7.  **Footnotes (Notas de Rodapé):**
     * Identify footnote markers and their corresponding text.
@@ -650,6 +650,11 @@ let currentlyHighlightedElement = null;
 let isPeriodicRecenterEnabled = false;
 let recenterInterval = null;
 
+// flags para race conditions
+let endedWhilePaused = false;
+let userInitiatedPause = false;
+let utteranceSegmentIndex = -1;
+
 
 // --- FUNÇÕES DE SÍNTESE DE VOZ E PROCESSAMENTO DE TEXTO ---
 
@@ -724,28 +729,62 @@ function extractContentWithSemantics(rootNode) {
 
 function speakText() {
     if (synth.speaking && !isPaused) return;
-    if (synth.paused && utterance) { synth.resume(); return; }
-    if (speechQueue.length > 0 && currentSegmentIndex < speechQueue.length) { playQueue(); return; }
+
+    if (synth.paused && utterance && !endedWhilePaused) {
+        try { synth.resume(); } catch (e) { console.warn('resume falhou', e); }
+        return;
+    }
+
+    if (endedWhilePaused) {
+        endedWhilePaused = false;
+        try { synth.cancel(); } catch (e) { /* ignore */ }
+
+        if (currentlyHighlightedElement) {
+            currentlyHighlightedElement.classList.remove('tts-highlight');
+            currentlyHighlightedElement = null;
+        }
+
+        if (currentSegmentIndex < speechQueue.length) {
+            playQueue();
+        } else {
+            stopSpeech();
+        }
+        return;
+    }
+
+    if (speechQueue.length > 0 && currentSegmentIndex < speechQueue.length) {
+        playQueue();
+        return;
+    }
+
     speechQueue = [];
     currentSegmentIndex = 0;
+
     const selection = window.getSelection();
     const selectedText = selection.toString().trim();
+
     if (selectedText && selection.rangeCount > 0) {
         let combinedFragment = document.createDocumentFragment();
         for (let i = 0; i < selection.rangeCount; i++) { combinedFragment.appendChild(selection.getRangeAt(i).cloneContents()); }
         const container = document.createElement('div');
-        const hasBlocks = typeof combinedFragment.querySelector === 'function' && !!combinedFragment.querySelector('p, h1, h2, h3, h4, h5, h6, li, blockquote, table');
-        if (!hasBlocks) { const wrapperP = document.createElement('p'); wrapperP.appendChild(combinedFragment); container.appendChild(wrapperP); } else { container.appendChild(combinedFragment); }
+        container.appendChild(combinedFragment);
+        const hasBlocks = !!container.querySelector('p, h1, h2, h3, h4, h5, h6, li, blockquote, table');
+        if (!hasBlocks) {
+            const wrapperP = document.createElement('p');
+            wrapperP.appendChild(container.firstChild || document.createTextNode(selection.toString()));
+            container.appendChild(wrapperP);
+        }
         speechQueue = extractContentWithSemantics(container);
         if (speechQueue.length > 0) { speechQueue[0].text = "Texto selecionado: " + speechQueue[0].text; }
     } else {
         const rootNode = document.getElementById('main-content') || document.body;
         speechQueue = extractContentWithSemantics(rootNode);
     }
+
     if (speechQueue.length === 0) return;
-    
-    // Gerenciamento do timer de recentralização
-    if (recenterInterval) { clearInterval(recenterInterval); }
+
+    // timer de recentralização
+    if (recenterInterval) { clearInterval(recenterInterval); recenterInterval = null; }
     if (isPeriodicRecenterEnabled) {
         recenterInterval = setInterval(() => {
             if (currentlyHighlightedElement && synth.speaking && !isPaused) {
@@ -753,41 +792,103 @@ function speakText() {
             }
         }, 2500);
     }
-    
+
     currentSegmentIndex = 0;
     playQueue();
 }
 
 function playQueue() {
     if (currentSegmentIndex >= speechQueue.length) { stopSpeech(); return; }
+    
+    if (synth.speaking && !isPaused) {
+        return;
+    }
+
     const segment = speechQueue[currentSegmentIndex];
     if (!segment || !segment.text) { currentSegmentIndex++; playQueue(); return; }
+
     if (currentlyHighlightedElement) { currentlyHighlightedElement.classList.remove('tts-highlight'); }
+
     if (segment.element) {
         currentlyHighlightedElement = segment.element;
         currentlyHighlightedElement.classList.add('tts-highlight');
         currentlyHighlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
+
     utterance = new SpeechSynthesisUtterance(segment.text);
+    utteranceSegmentIndex = currentSegmentIndex;
+
     const voiceSelector = document.getElementById('voiceSelector');
-    const selectedOption = voiceSelector.options[voiceSelector.selectedIndex];
-    if (selectedOption) { const voiceName = selectedOption.getAttribute('data-name'); utterance.voice = voices.find(voice => voice.name === voiceName); }
-    utterance.rate = parseFloat(document.getElementById('rateSlider').value);
-    utterance.pitch = parseFloat(document.getElementById('pitchSlider').value);
-    utterance.onerror = (event) => { console.error('SpeechSynthesisUtterance.onerror', event); if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight'); };
-    utterance.onend = () => { currentSegmentIndex++; playQueue(); };
-    utterance.onresume = () => { isPaused = false; if (currentlyHighlightedElement) currentlyHighlightedElement.classList.add('tts-highlight'); };
-    utterance.onpause = () => { isPaused = true; if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight'); };
-    synth.speak(utterance);
+    if (voiceSelector) {
+        const selectedIndex = voiceSelector.selectedIndex;
+        const selectedOption = voiceSelector.options[selectedIndex];
+        if (selectedOption) {
+            const voiceName = selectedOption.getAttribute('data-name');
+            utterance.voice = voices.find(v => v.name === voiceName) || null;
+        }
+    }
+
+    const rateSlider = document.getElementById('rateSlider');
+    const pitchSlider = document.getElementById('pitchSlider');
+    if (rateSlider) utterance.rate = parseFloat(rateSlider.value) || 1;
+    if (pitchSlider) utterance.pitch = parseFloat(pitchSlider.value) || 1;
+
+    utterance.onerror = (event) => {
+        console.error('SpeechSynthesisUtterance.onerror', event);
+        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight');
+    };
+
+    utterance.onpause = () => {
+        isPaused = true;
+        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight');
+    };
+
+    utterance.onresume = () => {
+        isPaused = false;
+        userInitiatedPause = false;
+        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.add('tts-highlight');
+    };
+
+    utterance.onend = () => {
+        utterance = null;
+
+        if (userInitiatedPause || isPaused || synth.paused) {
+            endedWhilePaused = true;
+            if (utteranceSegmentIndex === currentSegmentIndex) {
+                currentSegmentIndex++;
+            }
+            userInitiatedPause = false;
+            return;
+        }
+
+        currentSegmentIndex++;
+        playQueue();
+    };
+
     isPaused = false;
+    userInitiatedPause = false;
+    try {
+        synth.speak(utterance);
+    } catch (e) {
+        console.error('synth.speak falhou:', e);
+    }
 }
 
-function pauseSpeech() { if (synth.speaking && !isPaused) { synth.pause(); } }
+function pauseSpeech() {
+    if (synth.speaking && !synth.paused) {
+        userInitiatedPause = true;
+        isPaused = true;
+        try { synth.pause(); } catch (e) { console.warn('pause falhou', e); }
+    }
+}
 
 function stopSpeech() {
     if (utterance) utterance.onend = null;
     isPaused = false;
-    synth.cancel();
+    userInitiatedPause = false;
+    endedWhilePaused = false;
+    utteranceSegmentIndex = -1;
+    try { synth.cancel(); } catch (e) { /* ignore */ }
     if (currentlyHighlightedElement) { currentlyHighlightedElement.classList.remove('tts-highlight'); currentlyHighlightedElement = null; }
     if (recenterInterval) { clearInterval(recenterInterval); recenterInterval = null; }
     speechQueue = [];
@@ -797,18 +898,19 @@ function stopSpeech() {
 
 function skipToPrevious() {
     if (speechQueue.length === 0 || currentSegmentIndex <= 0) return;
-    currentSegmentIndex--;
+    currentSegmentIndex = Math.max(0, currentSegmentIndex - 1);
     if (utterance) utterance.onend = null;
-    synth.cancel();
-    setTimeout(playQueue, 100);
+    try { synth.cancel(); } catch (e) {}
+    setTimeout(() => { playQueue(); }, 80);
 }
 
 function skipToNext() {
-    if (speechQueue.length === 0 || currentSegmentIndex >= speechQueue.length - 1) { stopSpeech(); return; }
+    if (speechQueue.length === 0) { stopSpeech(); return; }
+    if (currentSegmentIndex >= speechQueue.length - 1) { stopSpeech(); return; }
     currentSegmentIndex++;
     if (utterance) utterance.onend = null;
-    synth.cancel();
-    setTimeout(playQueue, 100);
+    try { synth.cancel(); } catch (e) {}
+    setTimeout(() => { playQueue(); }, 80);
 }
 
 function updateFontSizeDisplay() {
@@ -832,6 +934,8 @@ function setFontFamily(fontName) {
 }
 
 function changeTheme(themeName) {
+    const validThemes = ['normal', 'dark', 'high-contrast'];
+    if (!validThemes.includes(themeName)) themeName = 'dark';
     document.body.className = '';
     document.body.classList.add(themeName + '-mode');
     localStorage.setItem('accessibilityTheme', themeName);
@@ -842,15 +946,17 @@ function updateSliderLabels() {
     const rateValue = document.getElementById('rateValue');
     const pitchSlider = document.getElementById('pitchSlider');
     const pitchValue = document.getElementById('pitchValue');
-    if(rateValue) rateValue.textContent = `${parseFloat(rateSlider.value).toFixed(1)}x`;
-    if(pitchValue) pitchValue.textContent = parseFloat(pitchSlider.value).toFixed(1);
+    if(rateValue && rateSlider) rateValue.textContent = `${parseFloat(rateSlider.value).toFixed(1)}x`;
+    if(pitchValue && pitchSlider) pitchValue.textContent = parseFloat(pitchSlider.value).toFixed(1);
 }
 
 function saveSpeechSettings() {
     const voiceSelector = document.getElementById('voiceSelector');
     if (voiceSelector) { const selectedVoice = voiceSelector.options[voiceSelector.selectedIndex]; if (selectedVoice) { localStorage.setItem('accessibilityVoiceName', selectedVoice.getAttribute('data-name')); } }
-    localStorage.setItem('accessibilityRate', document.getElementById('rateSlider').value);
-    localStorage.setItem('accessibilityPitch', document.getElementById('pitchSlider').value);
+    const rate = document.getElementById('rateSlider');
+    const pitch = document.getElementById('pitchSlider');
+    if (rate) localStorage.setItem('accessibilityRate', rate.value);
+    if (pitch) localStorage.setItem('accessibilityPitch', pitch.value);
 }
 
 function toggleAccessibilityMenu() {
@@ -862,18 +968,13 @@ function toggleAccessibilityMenu() {
     toggleButton.setAttribute('aria-label', isExpanded ? 'Fechar Menu de Acessibilidade' : 'Abrir Menu de Acessibilidade');
 }
 
-// --- FUNÇÃO CORRIGIDA AQUI ---
 function togglePeriodicRecenter(isEnabled) {
     isPeriodicRecenterEnabled = isEnabled;
     localStorage.setItem('accessibilityRecenter', isEnabled);
-    
-    // Sempre limpa o timer anterior para evitar duplicatas
     if (recenterInterval) {
         clearInterval(recenterInterval);
         recenterInterval = null;
     }
-
-    // Se a opção foi ativada E a leitura estiver em andamento, inicia um novo timer
     if (isEnabled && synth.speaking && !isPaused) {
         recenterInterval = setInterval(() => {
             if (currentlyHighlightedElement) {
@@ -888,21 +989,26 @@ document.addEventListener('DOMContentLoaded', () => {
     populateVoiceList();
     const savedTheme = localStorage.getItem('accessibilityTheme') || 'dark';
     changeTheme(savedTheme);
-    document.getElementById('themeSelector').value = savedTheme;
+    const themeSelector = document.getElementById('themeSelector');
+    if (themeSelector) themeSelector.value = savedTheme;
     const savedFontSize = parseInt(localStorage.getItem('accessibilityFontSize'), 10) || 16;
     currentFontSize = savedFontSize;
     document.body.style.fontSize = currentFontSize + 'px';
     updateFontSizeDisplay();
     const savedFontFamily = localStorage.getItem('accessibilityFontFamily') || fonts[0];
     setFontFamily(savedFontFamily);
-    document.getElementById('fontSelector').value = savedFontFamily;
+    const fontSelector = document.getElementById('fontSelector');
+    if (fontSelector) fontSelector.value = savedFontFamily;
     const savedRate = localStorage.getItem('accessibilityRate') || '1';
-    document.getElementById('rateSlider').value = savedRate;
+    const rateSlider = document.getElementById('rateSlider');
+    if (rateSlider) rateSlider.value = savedRate;
     const savedPitch = localStorage.getItem('accessibilityPitch') || '1';
-    document.getElementById('pitchSlider').value = savedPitch;
+    const pitchSlider = document.getElementById('pitchSlider');
+    if (pitchSlider) pitchSlider.value = savedPitch;
     const savedRecenter = localStorage.getItem('accessibilityRecenter') === 'true';
     isPeriodicRecenterEnabled = savedRecenter;
-    document.getElementById('recenterToggle').checked = savedRecenter;
+    const recenterToggle = document.getElementById('recenterToggle');
+    if (recenterToggle) recenterToggle.checked = savedRecenter;
     updateSliderLabels();
     document.addEventListener('keydown', function(event) { if (event.key === "Escape") { stopSpeech(); } });
     const menu = document.getElementById('accessibility-controls');
@@ -1007,7 +1113,7 @@ document.addEventListener('DOMContentLoaded', () => {
         merged_html += f"<article class='page-content' id='page-{page_num_in_doc}' aria-labelledby='page-heading-{page_num_in_doc}'>\n"
         merged_html += f"<h2 id='page-heading-{page_num_in_doc}'>Página {page_num_in_doc}</h2>\n"
         merged_html += html_body if html_body else f"<p><i>[Conteúdo não pôde ser extraído para a página {page_num_in_doc}.]</i></p>"
-        if html_body and base64_image and "[Descrição:" in html_body:
+        if html_body and base64_image and "[Descrição da imagem:" in html_body:
             safe_alt_text = html.escape(f"Imagem original da página {page_num_in_doc}")
             merged_html += f"""
                 <details class="original-page-viewer">
