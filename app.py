@@ -6,6 +6,7 @@ import json
 from botocore.exceptions import ClientError
 from botocore.client import Config
 from flask import Flask, render_template, request, jsonify, redirect, send_from_directory, flash, send_file
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 from processing import process_pdf_web, AVAILABLE_GEMINI_MODELS, DEFAULT_GEMINI_MODEL, API_KEY_ENV_VAR
 from config import MODE
@@ -21,6 +22,7 @@ load_dotenv()
 # --- Configuração do Flask ---
 ALLOWED_EXTENSIONS = {'pdf'}
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # Limite de 50 MB para upload
 app.secret_key = os.urandom(24)  # NECESSÁRIO para usar o sistema de mensagens 'flash'
 

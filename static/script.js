@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             // O cabeçalho 'Content-Type' NÃO deve ser definido manualmente.
             // O navegador o definirá como 'multipart/form-data' com o boundary correto.
-            const response = await fetch('/', {
+            const response = await fetch('', {
                 method: 'POST',
                 body: formData
             });
@@ -76,7 +76,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!currentTaskId) return;
 
         try {
-            await fetch(`/cancel/${currentTaskId}`, { method: 'POST' });
+            await fetch(`cancel/${currentTaskId}`, { method: 'POST' });
             cancelBtn.innerText = 'Cancelando...';
             cancelBtn.disabled = true;
         } catch (error) {
@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function pollStatus() {
         if (!currentTaskId) return;
 
-        fetch(`/status/${currentTaskId}`)
+        fetch(`status/${currentTaskId}`)
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
@@ -107,7 +107,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.is_complete) {
                     stopPolling();
                     if (data.success) {
-                        const downloadLink = `<a href="/download/${currentTaskId}" target="_blank" class="download-link">Clique aqui para baixar o HTML</a>`;
+                        const downloadLink = `<a href="download/${currentTaskId}" target="_blank" class="download-link">Clique aqui para baixar o HTML</a>`;
                         showResult(true, `Conversão concluída! ${downloadLink}`);
                     } else {
                         showResult(false, `Falha na conversão. Verifique o log para detalhes.`);
@@ -172,7 +172,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         try {
-            const response = await fetch('/unlock-dev', {
+            const response = await fetch('unlock-dev', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
