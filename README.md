@@ -8,6 +8,7 @@
 
 ## Chaves do .env:
 * GOOGLE_API_KEY
+* DEV_PASSWORD
 ##### Opcionais (Modo BUCKET):
 * Bucket AWS S3:
   * AWS_ACCESS_KEY_ID

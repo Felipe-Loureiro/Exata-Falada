@@ -258,6 +258,33 @@ def cancel_task(task_id):
 
     return jsonify({'message': 'A tarefa já foi concluída'})
 
+# ==========================================================
+# ===   NOVA ROTA PARA VALIDAÇÃO DA SENHA DE DEV         ===
+# ==========================================================
+@app.route('/unlock-dev', methods=['POST'])
+def unlock_dev_mode():
+    """
+    Recebe uma senha via JSON e a valida contra a variável de ambiente.
+    """
+    data = request.get_json()
+    if not data or 'password' not in data:
+        return jsonify({'success': False, 'error': 'Senha não fornecida'}), 400
+
+    submitted_password = data['password']
+    correct_password = os.environ.get('DEV_PASSWORD')
+
+    # É crucial que a variável DEV_PASSWORD esteja configurada no ambiente
+    if not correct_password:
+        app.logger.error("A variável de ambiente DEV_PASSWORD não foi configurada no servidor.")
+        # Retorna erro genérico para não expor detalhes da configuração
+        return jsonify({'success': False, 'error': 'Erro de configuração no servidor'}), 500
+
+    if submitted_password == correct_password:
+        return jsonify({'success': True}), 200
+    else:
+        # Retorna 401 Unauthorized para senhas incorretas
+        return jsonify({'success': False, 'error': 'Senha incorreta'}), 401
+
 
 # ==========================================================
 # ===   NOVA ROTA PARA CORREÇÃO/MERGE DE ARQUIVOS HTML   ===

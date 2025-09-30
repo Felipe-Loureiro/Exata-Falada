@@ -163,18 +163,40 @@ document.addEventListener('DOMContentLoaded', function() {
         resultSection.innerHTML = message;
     }
 
-    devBtn.addEventListener('click', function () {
-    const senha = prompt('Digite a senha de desenvolvedor:');
+    devBtn.addEventListener('click', async function () {
+        const senha = prompt('Digite a senha de desenvolvedor:');
 
-    const senhaCorreta = 'exata';
+        // Se o usuário cancelar o prompt, a senha será null.
+        if (senha === null) {
+            return;
+        }
 
-    if (senha === senhaCorreta) {
-        document.querySelectorAll('[data-role="dev"]').forEach(el => {
-            el.disabled = false;
-        });
-        //alert('Modo desenvolvedor ativado.');
-    } else {
-        //alert('Senha incorreta.');
-    }
+        try {
+            const response = await fetch('/unlock-dev', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ password: senha })
+            });
+
+            // O servidor respondeu com sucesso (status 200-299)
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    document.querySelectorAll('[data-role="dev"]').forEach(el => {
+                        el.disabled = false;
+                    });
+                }
+            } else {
+                // O servidor respondeu com um erro (ex: 401 Senha incorreta)
+                const errorData = await response.json();
+                alert(`Falha na autenticação: ${errorData.error || 'Tente novamente.'}`);
+            }
+
+        } catch (error) {
+            console.error('Erro ao contatar o servidor para validação:', error);
+            alert('Não foi possível conectar ao servidor para validar a senha.');
+        }
     });
 });
