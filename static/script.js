@@ -186,6 +186,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     document.querySelectorAll('[data-role="dev"]').forEach(el => {
                         el.disabled = false;
+                        el.classList.add('dev-unlocked');
                     });
                 }
             } else {

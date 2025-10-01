@@ -231,3 +231,28 @@ input[type="file"]::file-selector-button:hover {
     border-radius: 3px;
     font-weight: bold;
 }
+
+/* Estilo para o LABEL quando o campo dev está DESABILITADO (vermelho) */
+.form-group:has([data-role="dev"]:disabled) label {
+    color: #FF0000;
+    text-shadow: 0 0 3px #8b0000;
+}
+
+/* Estilo para o INPUT/SELECT quando está DESABILITADO (vermelho) */
+[data-role="dev"]:disabled {
+    border-color: #8b0000;
+    color: #FF0000;
+}
+
+/* Estilo para o LABEL quando o campo dev está HABILITADO (verde) */
+.form-group:has([data-role="dev"].dev-unlocked:enabled) label {
+    color: #00FF00;
+    text-shadow: 0 0 5px #00FF00;
+}
+
+/* Estilo para o INPUT/SELECT quando está HABILITADO (verde) */
+[data-role="dev"].dev-unlocked:enabled {
+    border-color: #00FF00;
+    color: #00FF00;
+    background-color: #102010;
+}

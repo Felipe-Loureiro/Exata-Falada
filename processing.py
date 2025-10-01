@@ -1129,6 +1129,15 @@ document.addEventListener('DOMContentLoaded', () => {
             <span id="pitchValue" aria-live="polite">1</span>
         </div>
     </div>
+    
+    <div id="usage-instructions" role="complementary" aria-labelledby="usage-heading">
+        <h2 id="usage-heading">Instruções de Uso</h2>
+        <ul>
+            <li><strong>Menu de Acessibilidade:</strong> Use o menu flutuante (botão com o ícone de acessibilidade) para personalizar sua experiência. Você pode alterar o tamanho e o tipo da fonte, trocar o tema de cores e ativar a leitura em voz alta do texto.</li>
+            <li><strong>Acesso via Celular:</strong> Para garantir que todas as funcionalidades funcionem corretamente, abra este arquivo diretamente em um navegador web (como Chrome, Safari, Firefox), em vez de usar o visualizador interno de aplicativos (como WhatsApp, Gmail, etc).</li>
+        </ul>
+    </div>
+    
     <main id="main-content" role="main">
 """
     for i, content_data in enumerate(content_list):
