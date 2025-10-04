@@ -627,6 +627,10 @@ def create_merged_html_with_accessibility(content_list, pdf_filename_title, outp
     .tts-highlight { background-color: yellow !important; color: black !important; box-shadow: 0 0 8px rgba(218, 165, 32, 0.7); transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out; border-radius: 3px; }
     .dark-mode .tts-highlight { background-color: #58a6ff; }
     .high-contrast-mode .tts-highlight { background-color: #FFFF00; color: black !important; }
+	#recenter-slider-container {display: none; margin-left: auto; align-items: center; gap: 8px;}
+    #recenter-slider-container.active {display: flex; width: 300px;}
+    #recenterIntervalSlider {flex: 1; min-width: 50px;}
+    #recenterIntervalValue {min-width: 200px; text-align: right; font-variant-numeric: tabular-nums;}
 </style>
 """
     accessibility_js = r"""
@@ -649,6 +653,7 @@ let currentlyHighlightedElement = null;
 // Estado da recentralização periódica
 let isPeriodicRecenterEnabled = false;
 let recenterInterval = null;
+let recenterIntervalTime = 1000;
 
 // flags para race conditions
 let endedWhilePaused = false;
@@ -790,7 +795,7 @@ function speakText() {
             if (currentlyHighlightedElement && synth.speaking && !isPaused) {
                 currentlyHighlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
-        }, 2500);
+        }, recenterIntervalTime);
     }
 
     currentSegmentIndex = 0;
@@ -973,6 +978,9 @@ function updateSliderLabels() {
     const pitchValue = document.getElementById('pitchValue');
     if(rateValue && rateSlider) rateValue.textContent = `${parseFloat(rateSlider.value).toFixed(1)}x`;
     if(pitchValue && pitchSlider) pitchValue.textContent = parseFloat(pitchSlider.value).toFixed(1);
+	if(rateValue && rateSlider) rateValue.textContent = `${parseFloat(rateSlider.value).toFixed(1)}x`;
+    if(pitchValue && pitchSlider) pitchValue.textContent = parseFloat(pitchSlider.value).toFixed(1);
+    if(recenterIntervalValue && recenterIntervalSlider) recenterIntervalValue.textContent = `${recenterIntervalSlider.value}ms`;
 }
 
 function saveSpeechSettings() {
@@ -980,8 +988,10 @@ function saveSpeechSettings() {
     if (voiceSelector) { const selectedVoice = voiceSelector.options[voiceSelector.selectedIndex]; if (selectedVoice) { localStorage.setItem('accessibilityVoiceName', selectedVoice.getAttribute('data-name')); } }
     const rate = document.getElementById('rateSlider');
     const pitch = document.getElementById('pitchSlider');
+	const recenterIntervalSlider = document.getElementById('recenterIntervalSlider');
     if (rate) localStorage.setItem('accessibilityRate', rate.value);
     if (pitch) localStorage.setItem('accessibilityPitch', pitch.value);
+	if (recenterIntervalSlider) localStorage.setItem('accessibilityRecenterInterval', recenterIntervalSlider.value);
 }
 
 function toggleAccessibilityMenu() {
@@ -996,6 +1006,11 @@ function toggleAccessibilityMenu() {
 function togglePeriodicRecenter(isEnabled) {
     isPeriodicRecenterEnabled = isEnabled;
     localStorage.setItem('accessibilityRecenter', isEnabled);
+    const sliderContainer = document.getElementById('recenter-slider-container');
+    if (sliderContainer) {
+        sliderContainer.classList.toggle("active", isEnabled);
+    }
+    
     if (recenterInterval) {
         clearInterval(recenterInterval);
         recenterInterval = null;
@@ -1005,7 +1020,26 @@ function togglePeriodicRecenter(isEnabled) {
             if (currentlyHighlightedElement) {
                 currentlyHighlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
-        }, 2500);
+        }, recenterIntervalTime);
+    }
+}
+
+function handleRecenterIntervalChange() {
+    const slider = document.getElementById('recenterIntervalSlider');
+    if (!slider) return;
+
+    recenterIntervalTime = parseInt(slider.value, 10);
+    updateSliderLabels();
+    saveSpeechSettings();
+
+    // Se o intervalo já estiver ativo, reinicia com o novo tempo
+    if (recenterInterval) {
+        clearInterval(recenterInterval);
+        recenterInterval = setInterval(() => {
+            if (currentlyHighlightedElement && synth.speaking && !isPaused) {
+                currentlyHighlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }, recenterIntervalTime);
     }
 }
 
@@ -1034,6 +1068,15 @@ document.addEventListener('DOMContentLoaded', () => {
     isPeriodicRecenterEnabled = savedRecenter;
     const recenterToggle = document.getElementById('recenterToggle');
     if (recenterToggle) recenterToggle.checked = savedRecenter;
+	const savedInterval = localStorage.getItem('accessibilityRecenterInterval') || '1000';
+    recenterIntervalTime = parseInt(savedInterval, 10);
+    const recenterIntervalSlider = document.getElementById('recenterIntervalSlider');
+    if (recenterIntervalSlider) recenterIntervalSlider.value = savedInterval;
+    const recenterSliderContainer = document.getElementById('recenter-slider-container');
+    if (recenterSliderContainer) {
+        recenterSliderContainer.style.display = ''; 
+        recenterSliderContainer.classList.toggle('active', savedRecenter);
+    }
     updateSliderLabels();
     document.addEventListener('keydown', function(event) { if (event.key === "Escape") { stopSpeech(); } });
     const menu = document.getElementById('accessibility-controls');
@@ -1111,9 +1154,14 @@ document.addEventListener('DOMContentLoaded', () => {
             <button onclick="skipToNext()" aria-label="Ler próximo segmento">Próximo ⏩</button>
         </div>
         <div class="control-group">
-            <label for="recenterToggle" style="flex-grow: 1;">Manter texto centralizado:</label>
+            <label for="recenterToggle">Manter texto centralizado:</label>
             <input type="checkbox" id="recenterToggle" onchange="togglePeriodicRecenter(this.checked)" aria-label="Ativar ou desativar a centralização automática durante a leitura">
-        </div>
+            
+            <div id="recenter-slider-container">
+                <input type="range" id="recenterIntervalSlider" min="250" max="2500" step="250" value="1000" oninput="handleRecenterIntervalChange()" aria-label="Intervalo de centralização em milissegundos">
+                <span id="recenterIntervalValue" aria-live="polite">1000ms</span>
+            </div>
+		</div>
         <div class="control-group">
             <label for="voiceSelector">Voz:</label>
             <select id="voiceSelector" aria-label="Selecionar voz" onchange="saveSpeechSettings()"></select>
