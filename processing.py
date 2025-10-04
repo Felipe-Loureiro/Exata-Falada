@@ -896,18 +896,35 @@ function speakFromVisible() {
 
     if (speechQueue.length === 0) return;
 
+    const viewportCenter = window.innerHeight / 2;
     let startIndex = 0;
+    let bestDistance = Infinity;
+
     for (let i = 0; i < speechQueue.length; i++) {
         const el = speechQueue[i].element;
         if (el) {
             const rect = el.getBoundingClientRect();
             
-            if (rect.top < window.innerHeight && rect.bottom > 0) {
-                startIndex = i;
-                break;
+            const elementCenter = (rect.top + rect.bottom) / 2;
+
+            if (rect.bottom > 0 && rect.top < window.innerHeight) {
+                const distance = Math.abs(elementCenter - viewportCenter);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    startIndex = i;
+                }
             }
         }
     }
+	
+	if (recenterInterval) { clearInterval(recenterInterval); recenterInterval = null; }
+    if (isPeriodicRecenterEnabled) {
+		recenterInterval = setInterval(() => {
+			if (currentlyHighlightedElement && synth.speaking && !isPaused) {
+				currentlyHighlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			}
+		}, recenterIntervalTime);
+	}
 
     currentSegmentIndex = startIndex;
     playQueue();
