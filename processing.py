@@ -627,6 +627,9 @@ def create_merged_html_with_accessibility(content_list, pdf_filename_title, outp
     .tts-highlight { background-color: yellow !important; color: black !important; box-shadow: 0 0 8px rgba(218, 165, 32, 0.7); transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out; border-radius: 3px; }
     .dark-mode .tts-highlight { background-color: #58a6ff; }
     .high-contrast-mode .tts-highlight { background-color: #FFFF00; color: black !important; }
+	.tts-paused { background-color: lightblue !important; color: black !important; border-radius: 3px; transition: background-color 0.2s ease-in-out; }
+    .dark-mode .tts-paused { background-color: #005f99 !important; }
+    .high-contrast-mode .tts-paused { background-color: #00FFFF !important; color: black !important; }
 	#recenter-slider-container {display: none; margin-left: auto; align-items: center; gap: 8px;}
     #recenter-slider-container.active {display: flex; width: 300px;}
     #recenterIntervalSlider {flex: 1; min-width: 50px;}
@@ -745,7 +748,7 @@ function speakText() {
         try { synth.cancel(); } catch (e) { /* ignore */ }
 
         if (currentlyHighlightedElement) {
-            currentlyHighlightedElement.classList.remove('tts-highlight');
+            currentlyHighlightedElement.classList.remove('tts-highlight', 'tts-paused');
             currentlyHighlightedElement = null;
         }
 
@@ -812,7 +815,7 @@ function playQueue() {
     const segment = speechQueue[currentSegmentIndex];
     if (!segment || !segment.text) { currentSegmentIndex++; playQueue(); return; }
 
-    if (currentlyHighlightedElement) { currentlyHighlightedElement.classList.remove('tts-highlight'); }
+    if (currentlyHighlightedElement) { currentlyHighlightedElement.classList.remove('tts-highlight', 'tts-paused'); }
 
     if (segment.element) {
         currentlyHighlightedElement = segment.element;
@@ -840,18 +843,24 @@ function playQueue() {
 
     utterance.onerror = (event) => {
         console.error('SpeechSynthesisUtterance.onerror', event);
-        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight');
+        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight', 'tts-paused');
     };
 
     utterance.onpause = () => {
         isPaused = true;
-        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.remove('tts-highlight');
+        if (currentlyHighlightedElement) {
+            currentlyHighlightedElement.classList.remove('tts-highlight');
+            currentlyHighlightedElement.classList.add('tts-paused');
+        }
     };
 
     utterance.onresume = () => {
         isPaused = false;
         userInitiatedPause = false;
-        if (currentlyHighlightedElement) currentlyHighlightedElement.classList.add('tts-highlight');
+        if (currentlyHighlightedElement) {
+            currentlyHighlightedElement.classList.remove('tts-paused');
+            currentlyHighlightedElement.classList.add('tts-highlight');
+        }
     };
 
     utterance.onend = () => {
@@ -919,7 +928,7 @@ function stopSpeech() {
     endedWhilePaused = false;
     utteranceSegmentIndex = -1;
     try { synth.cancel(); } catch (e) { /* ignore */ }
-    if (currentlyHighlightedElement) { currentlyHighlightedElement.classList.remove('tts-highlight'); currentlyHighlightedElement = null; }
+    if (currentlyHighlightedElement) { currentlyHighlightedElement.classList.remove('tts-highlight', 'tts-paused'); currentlyHighlightedElement = null; }
     if (recenterInterval) { clearInterval(recenterInterval); recenterInterval = null; }
     speechQueue = [];
     currentSegmentIndex = 0;
