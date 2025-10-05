@@ -6,3 +6,4 @@ gunicorn>=20.0.0
 boto3
 python-dotenv
 beautifulsoup4
+Flask-Cors
