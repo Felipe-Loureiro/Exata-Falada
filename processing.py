@@ -26,11 +26,13 @@ load_dotenv()
 # --- Configuração Inicial ---
 API_KEY_ENV_VAR = "GOOGLE_API_KEY"
 DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
-AVAILABLE_GEMINI_MODELS = [
-    'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite','gemini-2.5-flash-lite-preview-06-17',
-    'gemini-2.5-flash-preview-05-20', 'gemini-1.5-flash-8b', 'gemini-2.5-pro-preview-06-05'
+AVAILABLE_GEMINI_MODELS = [ 'gemini-2.0-flash', 'gemini-2.0-flash-lite','gemini-2.5-flash-lite',
+    'gemini-2.5-flash', 'gemini-2.5-pro'
 ]
-MODELO_ESCALONAMENTO = 'gemini-2.5-flash-lite-preview-06-17'
+
+#Atualizar com frequência a partir de https://ai.google.dev/gemini-api/docs/models
+
+MODELO_ESCALONAMENTO = 'gemini-2.5-flash'
 LIMITE_TOKENS_ESCALONAMENTO = 64000
 FINISH_REASON_MAX_TOKENS = "MAX_TOKENS"  # Na API v1beta, o finish_reason é uma string
 
