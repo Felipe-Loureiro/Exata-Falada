@@ -1303,6 +1303,7 @@ def process_pdf_web(
                 config=config
             )
 
+    tmp_pdf_path = None
     uploaded_files_map = {}
 
     def phase_progress_callback(step, total, text_prefix):
@@ -1327,8 +1328,22 @@ def process_pdf_web(
         elif MODE == "BUCKET":
             with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf_file:
                 status_callback(f"Baixando PDF do armazenamento: {s3_pdf_object_name}")
-                s3_client.download_fileobj(s3_bucket, s3_pdf_object_name, tmp_pdf_file)
-                pdf_path = tmp_pdf_file.name  # Agora temos um caminho local temporário
+
+                max_retries = 3
+                wait_time = 1
+                for attempt in range(max_retries):
+                    try:
+                        s3_client.download_fileobj(s3_bucket, s3_pdf_object_name, tmp_pdf_file)
+                        break
+                    except ClientError as e:
+                        if e.response['Error']['Code'] == '404' and attempt < max_retries - 1:
+                            status_callback(f"  Arquivo não encontrado (tentativa {attempt + 1}/{max_retries}). Aguardando {wait_time}s...")
+                            time.sleep(wait_time)
+                            wait_time *= 2
+                        else:
+                            raise
+
+                pdf_path = tmp_pdf_file.name
                 tmp_pdf_path = tmp_pdf_file.name
                 pdf_basename = os.path.splitext(os.path.basename(s3_pdf_object_name))[0]
 
