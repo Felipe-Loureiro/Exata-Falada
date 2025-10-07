@@ -1307,6 +1307,7 @@ def process_pdf_web(
 
     tmp_pdf_path = None
     uploaded_files_map = {}
+    temp_image_dir = None
 
     def phase_progress_callback(step, total, text_prefix):
         phase_map = {

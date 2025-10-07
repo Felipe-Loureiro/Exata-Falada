@@ -393,6 +393,7 @@ def api_upload():
     if file.filename == '' or not allowed_file(file.filename):
         return jsonify({'success': False, 'error': 'Arquivo inválido ou extensão não permitida'}), 400
 
+
     try:
         # A lógica de processamento é a mesma da rota original, mas sem flash/redirect
         pdf_path, s3_pdf_object_name, original_filename = None, None, None
@@ -403,6 +404,14 @@ def api_upload():
         elif MODE == "BUCKET":
             original_filename = secure_filename(file.filename)
             s3_pdf_object_name = f"uploads/{original_filename}"
+            try:
+                if S3_BUCKET:
+                    s3_client.upload_fileobj(file, S3_BUCKET, s3_pdf_object_name)
+                elif OCI_BUCKET:
+                    s3_client.upload_fileobj(file, OCI_BUCKET, s3_pdf_object_name)
+            except ClientError as e:
+                app.logger.error(f"Erro no upload para o Bucket: {e}")
+                return jsonify({'error': 'Falha ao salvar o arquivo no armazenamento externo.'}), 500
 
         is_developer = session.get('is_dev', False)
 
