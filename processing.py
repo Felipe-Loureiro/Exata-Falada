@@ -1328,26 +1328,20 @@ def process_pdf_web(
         if MODE == "LOCAL":
             pdf_basename = os.path.splitext(os.path.basename(pdf_path))[0]
         elif MODE == "BUCKET":
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf_file:
-                status_callback(f"Baixando PDF do armazenamento: {s3_pdf_object_name}")
+            try:
+                status_callback(f"Aguardando arquivo '{s3_pdf_object_name}' no armazenamento...")
+                waiter = s3_client.get_waiter('object_exists')
+                waiter.wait(Bucket=s3_bucket, Key=s3_pdf_object_name)
+                status_callback("Arquivo encontrado. Iniciando download...")
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf_file:
+                    s3_client.download_fileobj(s3_bucket, s3_pdf_object_name, tmp_pdf_file)
+                    pdf_path = tmp_pdf_file.name
+                    tmp_pdf_path = tmp_pdf_file.name
+            except Exception as e:
+                status_callback(f"Falha ao aguardar ou baixar o PDF: {e}")
+                raise
 
-                max_retries = 3
-                wait_time = 1
-                for attempt in range(max_retries):
-                    try:
-                        s3_client.download_fileobj(s3_bucket, s3_pdf_object_name, tmp_pdf_file)
-                        break
-                    except ClientError as e:
-                        if e.response['Error']['Code'] == '404' and attempt < max_retries - 1:
-                            status_callback(f"  Arquivo não encontrado (tentativa {attempt + 1}/{max_retries}). Aguardando {wait_time}s...")
-                            time.sleep(wait_time)
-                            wait_time *= 2
-                        else:
-                            raise
-
-                pdf_path = tmp_pdf_file.name
-                tmp_pdf_path = tmp_pdf_file.name
-                pdf_basename = os.path.splitext(os.path.basename(s3_pdf_object_name))[0]
+            pdf_basename = os.path.splitext(os.path.basename(s3_pdf_object_name))[0]
 
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         temp_image_dir = os.path.join('temp_processing', f"{pdf_basename}_{timestamp}")
@@ -1502,7 +1496,7 @@ def process_pdf_web(
             phase_progress_callback(0, 1, "Limpando")
 
             if MODE == "BUCKET":
-                if os.path.exists(tmp_pdf_path):
+                if tmp_pdf_path and os.path.exists(tmp_pdf_path):
                     try:
                         os.remove(tmp_pdf_path)
                         status_callback(f"  Arquivo temporário PDF removido.")
