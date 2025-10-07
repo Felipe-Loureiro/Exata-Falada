@@ -5,7 +5,7 @@ import boto3
 import json
 from botocore.exceptions import ClientError
 from botocore.client import Config
-from flask import Flask, render_template, request, jsonify, redirect, send_from_directory, flash, send_file
+from flask import Flask, render_template, request, jsonify, redirect, send_from_directory, flash, send_file, session
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 from processing import process_pdf_web, AVAILABLE_GEMINI_MODELS, DEFAULT_GEMINI_MODEL, API_KEY_ENV_VAR
@@ -127,11 +127,42 @@ def index():
                 return jsonify({'error': 'Falha ao salvar o arquivo no armazenamento externo.'}), 500
 
         # 3. Obter parâmetros do formulário
-        dpi = int(request.form.get('dpi', 100))
+        is_developer = session.get('is_dev', False)
+
+        DEFAULT_DPI = 100
+        DEFAULT_UPLOAD_WORKERS = 4
+        DEFAULT_GENERATE_WORKERS = 4
+
+        if is_developer:
+            app.logger.info("Requisição de um usuário DEV autenticado. Usando parâmetros do formulário.")
+            dpi = int(request.form.get('dpi', DEFAULT_DPI))
+            model = request.form.get('model', DEFAULT_GEMINI_MODEL)
+            upload_workers = int(request.form.get('upload_workers', DEFAULT_UPLOAD_WORKERS))
+            generate_workers = int(request.form.get('generate_workers', DEFAULT_GENERATE_WORKERS))
+        else:
+            form_dpi = int(request.form.get('dpi', DEFAULT_DPI))
+            form_model = request.form.get('model', DEFAULT_GEMINI_MODEL)
+            form_upload_workers = int(request.form.get('upload_workers', DEFAULT_UPLOAD_WORKERS))
+            form_generate_workers = int(request.form.get('generate_workers', DEFAULT_GENERATE_WORKERS))
+
+            # Verifica se os valores enviados são diferentes dos padrões esperados
+            if (form_dpi != DEFAULT_DPI or
+                    form_model != DEFAULT_GEMINI_MODEL or
+                    form_upload_workers != DEFAULT_UPLOAD_WORKERS or
+                    form_generate_workers != DEFAULT_GENERATE_WORKERS):
+
+                app.logger.warning(
+                    f"POTENCIAL MANIPULAÇÃO: Usuário não-DEV enviou parâmetros modificados. "
+                    f"Recebido: DPI={form_dpi}, Model='{form_model}', UploadW={form_upload_workers}, GenW={form_generate_workers}. "
+                    f"Ignorando e usando padrões de segurança."
+                )
+
+            dpi = DEFAULT_DPI
+            model = DEFAULT_GEMINI_MODEL
+            upload_workers = DEFAULT_UPLOAD_WORKERS
+            generate_workers = DEFAULT_GENERATE_WORKERS
+
         page_range = request.form.get('page_range', '')
-        model = request.form.get('model', DEFAULT_GEMINI_MODEL)
-        upload_workers = int(request.form.get('upload_workers', 10))
-        generate_workers = int(request.form.get('generate_workers', 5))
 
         # 4. Criar e registrar a tarefa
         task_id = str(uuid.uuid4())
@@ -286,6 +317,7 @@ def unlock_dev_mode():
         return jsonify({'success': False, 'error': 'Erro de configuração no servidor'}), 500
 
     if submitted_password == correct_password:
+        session['is_dev'] = True
         return jsonify({'success': True}), 200
     else:
         # Retorna 401 Unauthorized para senhas incorretas
@@ -371,13 +403,42 @@ def api_upload():
         elif MODE == "BUCKET":
             original_filename = secure_filename(file.filename)
             s3_pdf_object_name = f"uploads/{original_filename}"
-            # ... (sua lógica de upload para S3/OCI)
 
-        dpi = int(request.form.get('dpi', 100))
+        is_developer = session.get('is_dev', False)
+
+        DEFAULT_DPI = 100
+        DEFAULT_UPLOAD_WORKERS = 4
+        DEFAULT_GENERATE_WORKERS = 4
+
+        if is_developer:
+            app.logger.info("Requisição de um usuário DEV autenticado. Usando parâmetros do formulário.")
+            dpi = int(request.form.get('dpi', DEFAULT_DPI))
+            model = request.form.get('model', DEFAULT_GEMINI_MODEL)
+            upload_workers = int(request.form.get('upload_workers', DEFAULT_UPLOAD_WORKERS))
+            generate_workers = int(request.form.get('generate_workers', DEFAULT_GENERATE_WORKERS))
+        else:
+            form_dpi = int(request.form.get('dpi', DEFAULT_DPI))
+            form_model = request.form.get('model', DEFAULT_GEMINI_MODEL)
+            form_upload_workers = int(request.form.get('upload_workers', DEFAULT_UPLOAD_WORKERS))
+            form_generate_workers = int(request.form.get('generate_workers', DEFAULT_GENERATE_WORKERS))
+
+            # Verifica se os valores enviados são diferentes dos padrões esperados
+            if (form_dpi != DEFAULT_DPI or
+                    form_model != DEFAULT_GEMINI_MODEL or
+                    form_upload_workers != DEFAULT_UPLOAD_WORKERS or
+                    form_generate_workers != DEFAULT_GENERATE_WORKERS):
+                app.logger.warning(
+                    f"POTENCIAL MANIPULAÇÃO: Usuário não-DEV enviou parâmetros modificados. "
+                    f"Recebido: DPI={form_dpi}, Model='{form_model}', UploadW={form_upload_workers}, GenW={form_generate_workers}. "
+                    f"Ignorando e usando padrões de segurança."
+                )
+
+            dpi = DEFAULT_DPI
+            model = DEFAULT_GEMINI_MODEL
+            upload_workers = DEFAULT_UPLOAD_WORKERS
+            generate_workers = DEFAULT_GENERATE_WORKERS
+
         page_range = request.form.get('page_range', '')
-        model = request.form.get('model', DEFAULT_GEMINI_MODEL)
-        upload_workers = int(request.form.get('upload_workers', 10))
-        generate_workers = int(request.form.get('generate_workers', 5))
 
         task_id = str(uuid.uuid4())
         database.create_task(task_id)
