@@ -290,7 +290,7 @@ def upload_to_gemini_file_api(image_paths_to_upload, num_upload_workers, task_id
     return successfully_uploaded_map
 
 
-def create_html_prompt_with_desc(page_file_object, page_filename, img_dimensions, current_page_num_in_doc):
+def create_html_prompt_with_image_part(image_part, page_filename, img_dimensions, current_page_num_in_doc):
     """
     Gera o prompt para o Gemini, agora com uma instrução explícita para formatar URLs.
     """
@@ -431,7 +431,7 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
     * **AVOID UNNECESSARY TAGS:** Do NOT use `<bdi>` tags unless there is a clear, demonstrable need for bi-directional text isolation. This is generally not required for mathematical variables or simple text in Portuguese.
 **CRITICAL: Do NOT add any summary/explanation beyond original Portuguese. NO `<img>` tags.** Output only HTML code block.
 """
-    return [prompt, page_file_object]
+    return [prompt, image_part]
 
 
 def extract_html_from_response(response_text: str) -> str | None:
@@ -447,18 +447,26 @@ def extract_html_from_response(response_text: str) -> str | None:
     return None
 
 
-def generate_html_for_image_task(model_name, file_object_from_api, page_filename_local, local_img_path, task_id,
+def generate_html_for_image_task(model_name, page_filename_local, local_img_path, task_id,
                                  status_callback_main_thread, current_page_num_in_doc, original_page_order_index):
     if is_task_cancelled(task_id): raise OperationCancelledError("Geração HTML (task) cancelada antes de iniciar.")
 
-    base64_image_data = None
+    # Tenta ler a imagem e seu MIME type
     try:
-        with open(local_img_path, "rb") as img_file:
-            base64_image_data = base64.b64encode(img_file.read()).decode('utf-8')
-    except Exception as e_b64:
-        status_callback_main_thread(
-            f"  Aviso: Falha ao ler/codificar imagem {os.path.basename(local_img_path)} para Base64: {e_b64}")
-        base64_image_data = None
+        mime_type, _ = mimetypes.guess_type(local_img_path)
+        if not mime_type:
+            status_callback_main_thread(f"  Erro: Não foi possível determinar o MIME type para {page_filename_local}.")
+            return original_page_order_index, current_page_num_in_doc, None, None, "MIME_TYPE_ERROR"
+
+        with open(local_img_path, "rb") as image_file:
+            image_data = image_file.read()
+
+        image_part = {"mime_type": mime_type, "data": image_data}
+        base64_image_data = base64.b64encode(image_data).decode('utf-8')
+
+    except Exception as e_read:
+        status_callback_main_thread(f"  Erro ao ler o arquivo de imagem {page_filename_local}: {e_read}")
+        return original_page_order_index, current_page_num_in_doc, None, None, "IMAGE_READ_ERROR"
 
     dimensions_tuple = ("desconhecida", "desconhecida")
     try:
@@ -468,8 +476,9 @@ def generate_html_for_image_task(model_name, file_object_from_api, page_filename
     except Exception as e:
         status_callback_main_thread(f"  Aviso: Falha ao ler dimensões de {page_filename_local}: {e}.")
 
-    prompt_parts = create_html_prompt_with_desc(file_object_from_api, page_filename_local, dimensions_tuple,
-                                                current_page_num_in_doc)
+    # Usa a nova função de prompt
+    prompt_parts = create_html_prompt_with_image_part(image_part, page_filename_local, dimensions_tuple,
+                                                      current_page_num_in_doc)
 
     # --- LÓGICA DE ESCALONAMENTO DE CONFIGURAÇÃO ---
     generation_config_dict = {'temperature': 0.1}
@@ -499,7 +508,7 @@ def generate_html_for_image_task(model_name, file_object_from_api, page_filename
 
     if response and response.candidates:
         # Pega o motivo de finalização para análise posterior
-        final_finish_reason = response.candidates[0].finish_reason.value
+        final_finish_reason = response.candidates[0].finish_reason.value if response.candidates[0].finish_reason else 'UNKNOWN'
 
         response_text_content = response.text
         if not response_text_content and response.candidates[0].content and response.candidates[0].content.parts:
@@ -509,7 +518,6 @@ def generate_html_for_image_task(model_name, file_object_from_api, page_filename
 
         if response_text_content:
             html_body = extract_html_from_response(response_text_content)
-            # ... (post-processing de bdi continua o mesmo)
             if html_body:
                 html_body = re.sub(r'<bdi>([a-zA-Z0-9_](?:<sup>.*?</sup>)?)</bdi>', r'\1', html_body)
                 html_body = re.sub(r'<bdi>(\\[a-zA-Z]+(?:\{.*?\})?(?:\s*\^\{.*?\})?(?:\s*_\{.*?\})?)</bdi>', r'\1',
@@ -529,8 +537,259 @@ def generate_html_for_image_task(model_name, file_object_from_api, page_filename
     return original_page_order_index, current_page_num_in_doc, html_body, base64_image_data, final_finish_reason
 
 
-def create_merged_html_with_accessibility(content_list, pdf_filename_title, output_path=None, s3_client=None, s3_bucket=None, output_s3_key=None):
+def create_merged_html_with_accessibility(content_list, pdf_filename_title, report_button, output_path=None, s3_client=None, s3_bucket=None, output_s3_key=None):
     if not content_list: return False
+
+    report_button_css = ""
+    report_button_js = ""
+    report_button_js2 = ""
+    report_button_html = ""
+    report_button_instructions = ""
+    report_button_forms = ""
+
+    if report_button:
+        report_button_css = """
+        .modal {
+            display: none; /* Oculto por padrão */
+            position: fixed; 
+            z-index: 2000; /* Fica sobre todo o conteúdo */
+            left: 0;
+            top: 0;
+            width: 100%; 
+            height: 100%; 
+            overflow: auto; 
+            background-color: rgba(0,0,0,0.6); 
+        }
+        .modal-content {
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 5px;
+        }
+        .modal-content label { display: block; margin-top: 10px; }
+        .modal-content input[type="text"], .modal-content textarea {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            box-sizing: border-box;
+            border-radius: 3px;
+            border: 1px solid #ccc;
+        }
+        .modal-content button[type="submit"] {
+            padding: 10px 15px;
+            margin-top: 15px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .close-button {
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-button:hover, .close-button:focus { text-decoration: none; }
+    
+        /* Estilos do Modal para cada tema */
+        body.normal-mode .modal-content { background-color: #fefefe; color: #333; }
+        body.normal-mode .modal-content input, body.normal-mode .modal-content textarea { background-color: #fff; border-color: #ccc; color: #000; }
+        body.normal-mode .modal-content button { background-color: #007BFF; color: white; }
+        body.normal-mode .close-button { color: #aaa; }
+        body.normal-mode .close-button:hover, body.normal-mode .close-button:focus { color: black; }
+        
+        body.dark-mode .modal-content { background-color: #2c2c2c; border-color: #555; color: #e0e0e0; }
+        body.dark-mode .modal-content input, body.dark-mode .modal-content textarea { background-color: #333; border-color: #555; color: #e0e0e0; }
+        body.dark-mode .modal-content button { background-color: #4dabf7; color: #000; }
+        body.dark-mode .close-button { color: #ccc; }
+        body.dark-mode .close-button:hover, body.dark-mode .close-button:focus { color: white; }
+    
+        body.high-contrast-mode .modal-content { background-color: #000; border: 2px solid #FFFF00; color: #FFFF00; }
+        body.high-contrast-mode .modal-content input, body.high-contrast-mode .modal-content textarea { background-color: #111; border-color: #FFFF00; color: #FFFF00; }
+        body.high-contrast-mode .modal-content button { background-color: #FFFF00; color: #000; }
+        body.high-contrast-mode .close-button { color: #FFFF00; }
+        """
+
+        report_button_js = """
+// --- FUNÇÕES PARA RELATAR PROBLEMA ---
+/**
+ * Envia os dados do relato para um Google Form via requisição fetch.
+ * @param {string} filename - O nome do arquivo/documento.
+ * @param {string} pages - As páginas com problema (ex: "1", "3-5").
+ * @param {string} description - A descrição do problema.
+ */
+async function submitReport(filename, pages, description) {
+    // Estas informações devem ser extraídas do seu link do Google Forms
+    const googleFormURL = 'https://docs.google.com/forms/d/e/1FAIpQLSf0ElROqjuzrIT1YDXCNLcQIs-DvYHhlmODROPp203Ov_S62g/formResponse';
+    const entryFileName = 'entry.942777659';
+    const entryPages = 'entry.1235255784';
+    const entryDescription = 'entry.768914075';
+    const entryTimestamp = 'entry.603790658';
+
+    const formData = new FormData();
+    formData.append(entryFileName, filename);
+    formData.append(entryPages, pages);
+    formData.append(entryDescription, description);
+    formData.append(entryTimestamp, new Date().toLocaleString('pt-BR'));
+
+    try {
+        await fetch(googleFormURL, {
+            method: 'POST',
+            body: formData,
+            mode: 'no-cors' // Essencial para evitar erros de CORS com o Google
+        });
+        alert('Relato enviado com sucesso! Obrigado pela sua contribuição.');
+    } catch (error) {
+        console.error('Erro ao enviar o formulário:', error);
+        alert('Ocorreu um erro ao enviar o seu relato. Por favor, tente novamente.');
+    }
+}
+
+/**
+ * Obtém o nome do documento a partir do título H1 no cabeçalho.
+ * @returns {string} O nome do documento.
+ */
+function getDocumentName() {
+    const titleElement = document.querySelector('header h1');
+    if (titleElement) {
+        const fullTitle = titleElement.textContent;
+        // Ex: "Documento Acessível: max-min-solucao" -> "max-min-solucao"
+        return fullTitle.split(': ')[1] || 'Documento Desconhecido';
+    }
+    return 'Documento Desconhecido';
+}
+
+/**
+ * Encontra o número da página onde a seleção de texto do usuário está.
+ * @param {Selection} selection - O objeto de seleção do window.
+ * @returns {string} O número da página ou 'N/A' se não for encontrado.
+ */
+function getPageNumberOfSelection(selection) {
+    if (!selection || selection.rangeCount === 0) return 'N/A';
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    const node = container.nodeType === 3 ? container.parentNode : container;
+    const pageArticle = node.closest('article.page-content');
+    if (pageArticle && pageArticle.id.startsWith('page-')) {
+        return pageArticle.id.replace('page-', '');
+    }
+    return 'N/A';
+}
+
+/**
+ * Função principal chamada pelo botão "Relatar Problema".
+ * Verifica se há texto selecionado para decidir se envia o relato diretamente ou abre o modal.
+ */
+async function handleReportProblem() {
+    const selection = window.getSelection();
+    const selectedText = selection.toString().trim();
+    const documentName = getDocumentName();
+
+    if (selectedText) {
+        const pageNumber = getPageNumberOfSelection(selection);
+        const description = `"${selectedText}"`; 
+
+        const userConfirmed = confirm(
+            `Você deseja relatar o seguinte problema?\n\n` +
+            `Arquivo: ${documentName}\n` +
+            `Página: ${pageNumber}\n` +
+            `Texto: ${description}\n`
+        );
+
+        if (userConfirmed) {
+            await submitReport(documentName, pageNumber, description);
+        }
+    } else {
+        openReportModal();
+    }
+}
+
+/** Abre e prepara o modal de relato. */
+function openReportModal() {
+    const modal = document.getElementById('reportModal');
+    if (!modal) return;
+    const documentName = getDocumentName();
+    document.getElementById('modalFileName').textContent = `Arquivo: ${documentName}`;
+    document.getElementById('reportFileNameInput').value = documentName;
+    modal.style.display = 'block';
+}
+
+/** Fecha e limpa o modal de relato. */
+function closeReportModal() {
+    const modal = document.getElementById('reportModal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    const form = document.getElementById('reportForm');
+    if (form) form.reset();
+}
+
+/** Inicializa os eventos do modal (fechar, enviar formulário). */
+function initializeReportModal() {
+    const modal = document.getElementById('reportModal');
+    if (!modal) return;
+
+    const form = document.getElementById('reportForm');
+    
+    // O evento do botão de fechar já está no HTML (onclick="closeReportModal()")
+
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            closeReportModal();
+        }
+    }
+
+    if (form) {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const submitButton = form.querySelector('button[type="submit"]');
+            submitButton.textContent = 'Enviando...';
+            submitButton.disabled = true;
+
+            const filename = document.getElementById('reportFileNameInput').value;
+            const pages = document.getElementById('problemPages').value;
+            const description = document.getElementById('problemDescription').value;
+
+            await submitReport(filename, pages, description);
+            
+            submitButton.textContent = 'Enviar Relato';
+            submitButton.disabled = false;
+            closeReportModal();
+        });
+    }
+}
+        """
+
+        report_button_js2 = "initializeReportModal();"
+
+        report_button_html = """
+        <div class="control-group">
+            <span>Ajuda e Suporte:</span>
+            <button id="reportProblemBtn" onclick="handleReportProblem()" aria-label="Relatar um problema com o documento">🐞 Relatar Problema</button>
+        </div>
+        """
+
+        report_button_instructions = """<li><strong>Relatar um Problema:</strong> Encontrou um erro de formatação ou leitura? Selecione o texto problemático na página e clique no botão "🐞 Relatar Problema". O sistema preencherá o relatório para você. Se nenhum texto for selecionado, um formulário será aberto para preenchimento manual.</li>"""
+
+        report_button_forms = """
+        <div id="reportModal" class="modal">
+            <div class="modal-content">
+                <span class="close-button" onclick="closeReportModal()" title="Fechar">&times;</span>
+                <h2>Relatar Problema com o Documento</h2>
+                <h3 id="modalFileName"></h3>
+                <form id="reportForm">
+                    <input type="hidden" id="reportFileNameInput" name="filename">
+                    <label for="problemPages">Página(s) com problema (ex: 1, 3-5):</label>
+                    <input type="text" id="problemPages" name="pages" required>
+                    <label for="problemDescription">Descrição do problema:</label>
+                    <textarea id="problemDescription" name="description" rows="4" required></textarea>
+                    <button type="submit" class="button">Enviar Relato</button>
+                </form>
+            </div>
+        </div>
+        """
+
 
     accessibility_css = """
 <style>
@@ -636,10 +895,15 @@ def create_merged_html_with_accessibility(content_list, pdf_filename_title, outp
     #recenter-slider-container.active {display: flex; width: 300px;}
     #recenterIntervalSlider {flex: 1; min-width: 50px;}
     #recenterIntervalValue {min-width: 200px; text-align: right; font-variant-numeric: tabular-nums;}
+    """ + f""" {report_button_css}
 </style>
 """
-    accessibility_js = r"""
+
+
+    accessibility_js = f"""
 <script>
+{report_button_js}
+""" + r"""
 // --- CONFIGURAÇÃO E ESTADO GLOBAL ---
 let currentFontSize = 16;
 const fonts = ['Atkinson Hyperlegible', 'Lexend', 'OpenDyslexicRegular', 'Verdana', 'Arial', 'Times New Roman', 'Courier New'];
@@ -1111,6 +1375,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleButton = document.getElementById('accessibility-toggle');
     if (menu && !menu.classList.contains('expanded')) { menu.classList.add('collapsed'); }
     if (toggleButton && menu) { const isExpanded = menu.classList.contains('expanded'); toggleButton.setAttribute('aria-expanded', isExpanded.toString()); toggleButton.setAttribute('aria-label', isExpanded ? 'Fechar Menu de Acessibilidade' : 'Abrir Menu de Acessibilidade'); }
+    """ + report_button_js2 + """
 });
 </script>
 """
@@ -1204,6 +1469,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <input type="range" id="pitchSlider" min="0" max="2" step="0.1" value="1" oninput="updateSliderLabels(); saveSpeechSettings();">
             <span id="pitchValue" aria-live="polite">1</span>
         </div>
+        """ + report_button_html + """
     </div>
     
     <div id="usage-instructions" role="complementary" aria-labelledby="usage-heading">
@@ -1211,6 +1477,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <ul>
             <li><strong>Menu de Acessibilidade:</strong> Use o menu flutuante (botão com o ícone de acessibilidade) para personalizar sua experiência. Você pode alterar o tamanho e o tipo da fonte, trocar o tema de cores e ativar a leitura em voz alta do texto.</li>
             <li><strong>Acesso via Celular:</strong> Para garantir que todas as funcionalidades funcionem corretamente, abra este arquivo diretamente em um navegador web (como Chrome, Safari, Firefox), em vez de usar o visualizador interno de aplicativos (como WhatsApp, Gmail, etc).</li>
+        """ + report_button_instructions + """
         </ul>
     </div>
     
@@ -1235,7 +1502,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </details>
             """
         merged_html += "\n</article>\n"
-    merged_html += "\n    </main>\n</body>\n</html>"
+    merged_html += f"\n    </main> \n    {report_button_forms}\n</body>\n</html>"
 
     if MODE == "LOCAL":
         try:
@@ -1272,19 +1539,17 @@ def cleanup_api_files(files_to_delete, status_callback_func):
 
     status_callback_func("Limpeza assíncrona de arquivos da API finalizada.")
 
+
 def process_pdf_web(
         dpi, page_range_str, selected_model_name,
         num_upload_workers, num_generate_workers,
-        task_id, status_callback, completion_callback, progress_callback,
+        task_id, report_button, status_callback, completion_callback, progress_callback,
         s3_bucket=None, s3_pdf_object_name=None, output_s3_key=None, pdf_path=None, initial_output_html_path_base=None
 ):
     success = False
     result_message = "Processo iniciado mas não concluído."
 
-    if MODE == "LOCAL":
-        image_paths = []
-        temp_image_dir = ""
-    elif MODE == "BUCKET":
+    if MODE == "BUCKET":
         if os.environ.get('S3_BUCKET'):
             s3_client = boto3.client('s3', region_name=os.environ.get('S3_REGION'))
         elif os.environ.get('OCI_BUCKET'):
@@ -1306,12 +1571,11 @@ def process_pdf_web(
             )
 
     tmp_pdf_path = None
-    uploaded_files_map = {}
     temp_image_dir = None
 
     def phase_progress_callback(step, total, text_prefix):
         phase_map = {
-            "Convertendo": (0, 30), "Upload": (30, 60), "Gerando": (60, 90),
+            "Convertendo": (0, 40), "Gerando": (40, 90),
             "Mesclando": (90, 95), "Limpando": (95, 100)
         }
         phase_start, phase_end = next(((s, e) for k, (s, e) in phase_map.items() if k in text_prefix), (0, 100))
@@ -1365,35 +1629,33 @@ def process_pdf_web(
         if not image_paths: raise Exception("Falha ao converter PDF para imagens.")
         if is_task_cancelled(task_id): raise OperationCancelledError("Cancelado após conversão.")
 
-        uploaded_files_map = upload_to_gemini_file_api(image_paths, num_upload_workers, task_id, status_callback,
-                                                       phase_progress_callback)
-        if not uploaded_files_map: raise Exception("Falha ao fazer upload de imagens para API Gemini.")
-        if is_task_cancelled(task_id): raise OperationCancelledError("Cancelado após upload.")
+        # ETAPA DE UPLOAD REMOVIDA
+        status_callback("Conversão para imagens concluída. Iniciando geração de HTML.")
 
-        # --- Início da Lógica de Geração de HTML (Substituindo a simulação) ---
-        num_files_successfully_uploaded = len(uploaded_files_map)
+        # --- Início da Lógica de Geração de HTML ---
         status_callback(
-            f"Gerando HTML para {num_files_successfully_uploaded} imagem(ns) usando o modelo base '{selected_model_name}'...")
+            f"Gerando HTML para {len(image_paths)} imagem(ns) usando o modelo base '{selected_model_name}'...")
 
         local_path_to_original_page_num = {
             img_path: int(m.group(1)) if (m := re.search(r"page_(\d+)\.\w+$", os.path.basename(img_path))) else -1
-            for img_path in uploaded_files_map.keys()
+            for img_path in image_paths
         }
 
         tasks_for_html_generation = []
-        sorted_uploaded_image_paths = sorted(
-            uploaded_files_map.keys(),
+        sorted_image_paths = sorted(
+            image_paths,
             key=lambda x: local_path_to_original_page_num.get(x, float('inf'))
         )
 
-        for original_order_idx, local_img_path in enumerate(sorted_uploaded_image_paths):
+        for original_order_idx, local_img_path in enumerate(sorted_image_paths):
             page_num_in_doc = local_path_to_original_page_num.get(local_img_path, -1)
-            file_api_object = uploaded_files_map.get(local_img_path)
-            if page_num_in_doc == -1 or not file_api_object:
-                status_callback(f"  Pulando {os.path.basename(local_img_path)} para geração HTML (dados inválidos).")
+            if page_num_in_doc == -1:
+                status_callback(
+                    f"  Pulando {os.path.basename(local_img_path)} para geração HTML (número da pág. inválido).")
                 continue
 
-            task_args = (file_api_object, os.path.basename(local_img_path),
+            # Argumentos para a nova função generate_html_for_image_task
+            task_args = (os.path.basename(local_img_path),
                          local_img_path, task_id, status_callback, page_num_in_doc, original_order_idx)
             tasks_for_html_generation.append({
                 'args': task_args,
@@ -1473,9 +1735,13 @@ def process_pdf_web(
         phase_progress_callback(0, 1, "Mesclando")
 
         if MODE == "LOCAL":
-            success_merge = create_merged_html_with_accessibility(generated_content_list_thread, pdf_basename, output_path=initial_output_html_path_base)
+            success_merge = create_merged_html_with_accessibility(generated_content_list_thread, pdf_basename,
+                                                                  report_button,
+                                                                  output_path=initial_output_html_path_base)
         elif MODE == "BUCKET":
-            success_merge = create_merged_html_with_accessibility(generated_content_list_thread, pdf_basename, s3_client=s3_client,s3_bucket=s3_bucket, output_s3_key=output_s3_key)
+            success_merge = create_merged_html_with_accessibility(generated_content_list_thread, pdf_basename,
+                                                                  report_button, s3_client=s3_client,
+                                                                  s3_bucket=s3_bucket, output_s3_key=output_s3_key)
         if not success_merge:
             raise Exception("Falha ao criar arquivo HTML mesclado.")
 
@@ -1507,18 +1773,11 @@ def process_pdf_web(
             if temp_image_dir and os.path.exists(temp_image_dir):
                 try:
                     shutil.rmtree(temp_image_dir)
-                    status_callback(f"  Diretório temporário removido.")
+                    status_callback(f"  Diretório temporário de imagens removido.")
                 except Exception as e_rm:
-                    status_callback(f"  Aviso: Falha ao remover diretório temporário: {e_rm}")
+                    status_callback(f"  Aviso: Falha ao remover diretório temporário de imagens: {e_rm}")
 
-            # Limpeza da API em uma nova thread
-            if uploaded_files_map:
-                cleanup_thread = threading.Thread(
-                    target=cleanup_api_files,
-                    args=(dict(uploaded_files_map), status_callback)  # Passa uma cópia do dict
-                )
-                cleanup_thread.daemon = True  # Permite que o programa principal saia mesmo que a thread não termine
-                cleanup_thread.start()
+            # LIMPEZA DA API REMOVIDA
 
             phase_progress_callback(1, 1, "Limpando")
             status_callback("Limpeza finalizada.")

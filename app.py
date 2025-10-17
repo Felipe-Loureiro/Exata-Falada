@@ -132,6 +132,7 @@ def index():
         DEFAULT_DPI = 100
         DEFAULT_UPLOAD_WORKERS = 4
         DEFAULT_GENERATE_WORKERS = 4
+        DEFAULT_REPORT_BUTTON = False
 
         if is_developer:
             app.logger.info("Requisição de um usuário DEV autenticado. Usando parâmetros do formulário.")
@@ -139,6 +140,7 @@ def index():
             model = request.form.get('model', DEFAULT_GEMINI_MODEL)
             upload_workers = int(request.form.get('upload_workers', DEFAULT_UPLOAD_WORKERS))
             generate_workers = int(request.form.get('generate_workers', DEFAULT_GENERATE_WORKERS))
+            report_button = False
         else:
             form_dpi = int(request.form.get('dpi', DEFAULT_DPI))
             form_model = request.form.get('model', DEFAULT_GEMINI_MODEL)
@@ -161,6 +163,7 @@ def index():
             model = DEFAULT_GEMINI_MODEL
             upload_workers = DEFAULT_UPLOAD_WORKERS
             generate_workers = DEFAULT_GENERATE_WORKERS
+            report_button = DEFAULT_REPORT_BUTTON
 
         page_range = request.form.get('page_range', '')
 
@@ -197,7 +200,7 @@ def index():
         thread_args_dict = {
             "dpi": dpi, "page_range_str": page_range, "selected_model_name": model,
             "num_upload_workers": upload_workers, "num_generate_workers": generate_workers,
-            "task_id": task_id,
+            "task_id": task_id, "report_button": report_button,
             "status_callback": status_callback, "completion_callback": completion_callback,
             "progress_callback": progress_callback
         }
@@ -418,6 +421,7 @@ def api_upload():
         DEFAULT_DPI = 100
         DEFAULT_UPLOAD_WORKERS = 4
         DEFAULT_GENERATE_WORKERS = 4
+        DEFAULT_REPORT_BUTTON = False
 
         if is_developer:
             app.logger.info("Requisição de um usuário DEV autenticado. Usando parâmetros do formulário.")
@@ -425,6 +429,7 @@ def api_upload():
             model = request.form.get('model', DEFAULT_GEMINI_MODEL)
             upload_workers = int(request.form.get('upload_workers', DEFAULT_UPLOAD_WORKERS))
             generate_workers = int(request.form.get('generate_workers', DEFAULT_GENERATE_WORKERS))
+            report_button = False
         else:
             form_dpi = int(request.form.get('dpi', DEFAULT_DPI))
             form_model = request.form.get('model', DEFAULT_GEMINI_MODEL)
@@ -446,6 +451,7 @@ def api_upload():
             model = DEFAULT_GEMINI_MODEL
             upload_workers = DEFAULT_UPLOAD_WORKERS
             generate_workers = DEFAULT_GENERATE_WORKERS
+            report_button = DEFAULT_REPORT_BUTTON
 
         page_range = request.form.get('page_range', '')
 
@@ -481,7 +487,7 @@ def api_upload():
         thread_args_dict = {
             "dpi": dpi, "page_range_str": page_range, "selected_model_name": model,
             "num_upload_workers": upload_workers, "num_generate_workers": generate_workers,
-            "task_id": task_id,
+            "task_id": task_id, "report_button": report_button,
             "status_callback": status_callback, "completion_callback": completion_callback,
             "progress_callback": progress_callback
         }
