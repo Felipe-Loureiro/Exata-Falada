@@ -130,7 +130,6 @@ def index():
         is_developer = session.get('is_dev', False)
 
         DEFAULT_DPI = 100
-        DEFAULT_UPLOAD_WORKERS = 4
         DEFAULT_GENERATE_WORKERS = 4
         DEFAULT_REPORT_BUTTON = False
 
@@ -138,30 +137,26 @@ def index():
             app.logger.info("Requisição de um usuário DEV autenticado. Usando parâmetros do formulário.")
             dpi = int(request.form.get('dpi', DEFAULT_DPI))
             model = request.form.get('model', DEFAULT_GEMINI_MODEL)
-            upload_workers = int(request.form.get('upload_workers', DEFAULT_UPLOAD_WORKERS))
             generate_workers = int(request.form.get('generate_workers', DEFAULT_GENERATE_WORKERS))
-            report_button = False
+            report_button = request.form.get('report_button') == 'true'
         else:
             form_dpi = int(request.form.get('dpi', DEFAULT_DPI))
             form_model = request.form.get('model', DEFAULT_GEMINI_MODEL)
-            form_upload_workers = int(request.form.get('upload_workers', DEFAULT_UPLOAD_WORKERS))
             form_generate_workers = int(request.form.get('generate_workers', DEFAULT_GENERATE_WORKERS))
 
             # Verifica se os valores enviados são diferentes dos padrões esperados
             if (form_dpi != DEFAULT_DPI or
                     form_model != DEFAULT_GEMINI_MODEL or
-                    form_upload_workers != DEFAULT_UPLOAD_WORKERS or
                     form_generate_workers != DEFAULT_GENERATE_WORKERS):
 
                 app.logger.warning(
                     f"POTENCIAL MANIPULAÇÃO: Usuário não-DEV enviou parâmetros modificados. "
-                    f"Recebido: DPI={form_dpi}, Model='{form_model}', UploadW={form_upload_workers}, GenW={form_generate_workers}. "
+                    f"Recebido: DPI={form_dpi}, Model='{form_model}', GenW={form_generate_workers}. "
                     f"Ignorando e usando padrões de segurança."
                 )
 
             dpi = DEFAULT_DPI
             model = DEFAULT_GEMINI_MODEL
-            upload_workers = DEFAULT_UPLOAD_WORKERS
             generate_workers = DEFAULT_GENERATE_WORKERS
             report_button = DEFAULT_REPORT_BUTTON
 
@@ -199,7 +194,7 @@ def index():
         # 6. Iniciar a thread de processamento
         thread_args_dict = {
             "dpi": dpi, "page_range_str": page_range, "selected_model_name": model,
-            "num_upload_workers": upload_workers, "num_generate_workers": generate_workers,
+            "num_generate_workers": generate_workers,
             "task_id": task_id, "report_button": report_button,
             "status_callback": status_callback, "completion_callback": completion_callback,
             "progress_callback": progress_callback
@@ -419,7 +414,6 @@ def api_upload():
         is_developer = session.get('is_dev', False)
 
         DEFAULT_DPI = 100
-        DEFAULT_UPLOAD_WORKERS = 4
         DEFAULT_GENERATE_WORKERS = 4
         DEFAULT_REPORT_BUTTON = False
 
@@ -427,29 +421,25 @@ def api_upload():
             app.logger.info("Requisição de um usuário DEV autenticado. Usando parâmetros do formulário.")
             dpi = int(request.form.get('dpi', DEFAULT_DPI))
             model = request.form.get('model', DEFAULT_GEMINI_MODEL)
-            upload_workers = int(request.form.get('upload_workers', DEFAULT_UPLOAD_WORKERS))
             generate_workers = int(request.form.get('generate_workers', DEFAULT_GENERATE_WORKERS))
-            report_button = False
+            report_button = request.form.get('report_button') == 'true'
         else:
             form_dpi = int(request.form.get('dpi', DEFAULT_DPI))
             form_model = request.form.get('model', DEFAULT_GEMINI_MODEL)
-            form_upload_workers = int(request.form.get('upload_workers', DEFAULT_UPLOAD_WORKERS))
             form_generate_workers = int(request.form.get('generate_workers', DEFAULT_GENERATE_WORKERS))
 
             # Verifica se os valores enviados são diferentes dos padrões esperados
             if (form_dpi != DEFAULT_DPI or
                     form_model != DEFAULT_GEMINI_MODEL or
-                    form_upload_workers != DEFAULT_UPLOAD_WORKERS or
                     form_generate_workers != DEFAULT_GENERATE_WORKERS):
                 app.logger.warning(
                     f"POTENCIAL MANIPULAÇÃO: Usuário não-DEV enviou parâmetros modificados. "
-                    f"Recebido: DPI={form_dpi}, Model='{form_model}', UploadW={form_upload_workers}, GenW={form_generate_workers}. "
+                    f"Recebido: DPI={form_dpi}, Model='{form_model}', GenW={form_generate_workers}. "
                     f"Ignorando e usando padrões de segurança."
                 )
 
             dpi = DEFAULT_DPI
             model = DEFAULT_GEMINI_MODEL
-            upload_workers = DEFAULT_UPLOAD_WORKERS
             generate_workers = DEFAULT_GENERATE_WORKERS
             report_button = DEFAULT_REPORT_BUTTON
 
@@ -486,7 +476,7 @@ def api_upload():
         # 6. Iniciar a thread de processamento
         thread_args_dict = {
             "dpi": dpi, "page_range_str": page_range, "selected_model_name": model,
-            "num_upload_workers": upload_workers, "num_generate_workers": generate_workers,
+            "num_generate_workers": generate_workers,
             "task_id": task_id, "report_button": report_button,
             "status_callback": status_callback, "completion_callback": completion_callback,
             "progress_callback": progress_callback

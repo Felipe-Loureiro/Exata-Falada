@@ -41,9 +41,8 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.append('dpi', document.getElementById('dpi').value);
         formData.append('page_range', document.getElementById('page_range').value);
         formData.append('model', document.getElementById('model').value);
-        formData.append('upload_workers', document.getElementById('upload_workers').value);
         formData.append('generate_workers', document.getElementById('generate_workers').value);
-        // --- FIM DA CORREÇÃO ---
+        formData.append('report_button', document.getElementById('report_button').checked);
 
         try {
             // O cabeçalho 'Content-Type' NÃO deve ser definido manualmente.

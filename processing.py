@@ -1541,8 +1541,7 @@ def cleanup_api_files(files_to_delete, status_callback_func):
 
 
 def process_pdf_web(
-        dpi, page_range_str, selected_model_name,
-        num_upload_workers, num_generate_workers,
+        dpi, page_range_str, selected_model_name, num_generate_workers,
         task_id, report_button, status_callback, completion_callback, progress_callback,
         s3_bucket=None, s3_pdf_object_name=None, output_s3_key=None, pdf_path=None, initial_output_html_path_base=None
 ):
