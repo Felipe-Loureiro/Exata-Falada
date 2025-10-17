@@ -621,11 +621,11 @@ def create_merged_html_with_accessibility(content_list, pdf_filename_title, repo
  */
 async function submitReport(filename, pages, description) {
     // Estas informações devem ser extraídas do seu link do Google Forms
-    const googleFormURL = 'https://docs.google.com/forms/d/e/1FAIpQLSf0ElROqjuzrIT1YDXCNLcQIs-DvYHhlmODROPp203Ov_S62g/formResponse';
-    const entryFileName = 'entry.942777659';
-    const entryPages = 'entry.1235255784';
-    const entryDescription = 'entry.768914075';
-    const entryTimestamp = 'entry.603790658';
+    const googleFormURL = 'https://docs.google.com/forms/d/e/1FAIpQLSceYTiU_ec4anxBzANdKc8RF1jPbGNxMET4P_ICm95FLTZa8w/formResponse';
+    const entryFileName = 'entry.681517248';
+    const entryPages = 'entry.57540117';
+    const entryDescription = 'entry.1947389767';
+    const entryTimestamp = 'entry.877859521';
 
     const formData = new FormData();
     formData.append(entryFileName, filename);
