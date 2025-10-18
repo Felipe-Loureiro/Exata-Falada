@@ -16,7 +16,34 @@ document.addEventListener('DOMContentLoaded', function() {
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
 
-        // --- INÍCIO DA CORREÇÃO ---
+        const isDevUIMode = devBtn.textContent === 'Habilitado';
+
+        if (isDevUIMode) {
+            try {
+                const statusResponse = await fetch('check-dev-status');
+                if (!statusResponse.ok) {
+                     throw new Error('Falha ao verificar status da sessão.');
+                }
+                const statusData = await statusResponse.json();
+
+                if (!statusData.is_dev) {
+                    alert('Sua sessão de desenvolvedor expirou no servidor!\n\nPor favor, digite a senha novamente para reativar o modo DEV antes de enviar.');
+
+                    devBtn.textContent = 'Habilitar';
+                    document.querySelectorAll('[data-role="dev"]').forEach(el => {
+                        el.disabled = true;
+                        el.classList.remove('dev-unlocked');
+                    });
+
+                    return;
+                }
+            } catch (error) {
+                console.error("Erro ao verificar status de DEV:", error);
+                showResult(false, 'Não foi possível verificar a sessão de desenvolvedor. Verifique sua conexão e tente novamente.');
+                return; // Aborta em caso de erro de rede
+            }
+        }
+
         // 1. Verificar se um arquivo foi selecionado no lado do cliente
         if (fileInput.files.length === 0) {
             showResult(false, 'Por favor, selecione um arquivo PDF primeiro.');
@@ -141,6 +168,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (enabled) {
             form.querySelectorAll('input:not([data-role="dev"]), select:not([data-role="dev"])').forEach(el => el.disabled = !enabled);
+            devBtn.textContent = "Habilitar"
         } else {
             form.querySelectorAll('input, select').forEach(el => el.disabled = !enabled);
         }
@@ -187,6 +215,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         el.disabled = false;
                         el.classList.add('dev-unlocked');
                     });
+
+                    devBtn.textContent = 'Habilitado';
                 }
             } else {
                 // O servidor respondeu com um erro (ex: 401 Senha incorreta)

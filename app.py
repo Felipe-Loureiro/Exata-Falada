@@ -321,6 +321,11 @@ def unlock_dev_mode():
         # Retorna 401 Unauthorized para senhas incorretas
         return jsonify({'success': False, 'error': 'Senha incorreta'}), 401
 
+@app.route('/check-dev-status', methods=['GET'])
+def check_dev_status():
+    """Verifica se o usuário atual tem uma sessão de dev ativa."""
+    is_developer = session.get('is_dev', False)
+    return jsonify({'is_dev': is_developer})
 
 # ==========================================================
 # ===   NOVA ROTA PARA CORREÇÃO/MERGE DE ARQUIVOS HTML   ===
@@ -524,6 +529,10 @@ def get_models():
         'available_models': AVAILABLE_GEMINI_MODELS,
         'default_model': DEFAULT_GEMINI_MODEL
     })
+
+@app.route('/api/check-dev-status', methods=['GET'])
+def api_check_dev_status():
+    return check_dev_status()
 
 
 @app.route('/api/patch', methods=['POST'])
