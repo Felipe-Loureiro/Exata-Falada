@@ -892,6 +892,7 @@ function initializeReportModal() {
 	.tts-paused { background-color: lightblue !important; color: black !important; border-radius: 3px; transition: background-color 0.2s ease-in-out; }
     .dark-mode .tts-paused { background-color: #005f99 !important; }
     .high-contrast-mode .tts-paused { background-color: #00FFFF !important; color: black !important; }
+    .high-contrast-mode .tts-highlight [aria-hidden="true"] * {color: black !important; fill: black !important;}
 	#recenter-slider-container {display: none; margin-left: auto; align-items: center; gap: 8px;}
     #recenter-slider-container.active {display: flex; width: 300px;}
     #recenterIntervalSlider {flex: 1; min-width: 50px;}
