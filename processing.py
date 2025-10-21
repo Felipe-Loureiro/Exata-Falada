@@ -345,10 +345,11 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
     ---
 
     * **REGRA DE PAREAMENTO OBRIGATÓRIO: Toda vez que você escrever uma equação LaTeX dentro de `<span aria-hidden="true">...</span>`, é MANDATÓRIO que ela seja imediatamente seguida por sua descrição correspondente em linguagem natural dentro de `<span class="sr-only">...</span>`. NÃO HÁ EXCEÇÕES para esta regra. Os dois elementos devem sempre aparecer juntos como um par.**
+    * **ESTRUTURA DE BLOCO OBRIGATÓRIA: O par de <span> (equação visual e descrição textual) DEVE ser envolvido por um elemento de bloco parágrafo <p>: <p><span aria-hidden="true">...</span> <span class="sr-only">...</span></p>**
     * **CRITICAL DELIMITER USAGE:** For inline mathematics, YOU MUST USE `<span aria-hidden="true">\\(...\\)</span>` (e.g., `<span aria-hidden="true">\\(x=y\\)</span>`). For display mathematics (equations on their own line), YOU MUST USE `<span aria-hidden="true">$$...$$</span>` (e.g., `<span aria-hidden="true">$$x = \\sum y_i$$</span>`).
     * **Ensure that *all* mathematical symbols, including single-letter variables mentioned in prose (e.g., '...where v is velocity...'), are enclosed in inline LaTeX delimiters followed by a natural language description (e.g., output as '...where <span aria-hidden="true">\\(v\\)</span> <span class="sr-only">v</span> is velocity...').** This applies to all isolated symbols.
-    * Exemple inline mathematics: <p>Se a posição de um carro no instante <span aria-hidden="true">\\(t > 0\\)</span> <span class="sr-only"> t maior que 0</span> é dada por <span aria-hidden="true">\\(s(t) = (4+t^2)\\)</span> <span class="sr-only">s de t é igual a 4 mais t ao quadrado</span><\\p>
-    * Exemple display mathematics: <p><span aria-hidden="true">$$ v(2) = 4. $$</span> <span class="sr-only"> v de 2 é igual a 4</span><\\p>
+    * Exemple inline mathematics: <p>Se a posição de um carro no instante <span aria-hidden="true">\\(t > 0\\)</span> <span class="sr-only"> t maior que 0</span> é dada por <span aria-hidden="true">\\(s(t) = (4+t^2)\\)</span> <span class="sr-only">s de t é igual a 4 mais t ao quadrado</span></p>
+    * Exemple display mathematics: <p><span aria-hidden="true">$$ v(2) = 4. $$</span> <span class="sr-only"> v de 2 é igual a 4</span></p>
 
 4.  **Tables (CRITICAL FOR ACCESSIBILITY):**
     * Identify any tables.
@@ -982,22 +983,99 @@ function populateVoiceList() {
     }
 }
 
+function toRoman(num) {
+    if (num < 1 || num > 3999) return num.toString(); // Limita a conversão a um intervalo razoável
+    const roman = { M: 1000, CM: 900, D: 500, CD: 400, C: 100, XC: 90, L: 50, XL: 40, X: 10, IX: 9, V: 5, IV: 4, I: 1 };
+    let str = '';
+    for (let i of Object.keys(roman)) {
+        let q = Math.floor(num / roman[i]);
+        num -= q * roman[i];
+        str += i.repeat(q);
+    }
+    return str;
+}
+
+
+function getListPrefix(liElement) {
+    const parentList = liElement.closest('ol, ul');
+    if (!parentList) {
+        return 'Item: ';
+    }
+
+    const listItems = Array.from(parentList.children).filter(child => child.tagName === 'LI');
+    const index = listItems.indexOf(liElement);
+
+    if (parentList.tagName === 'OL') {
+        const type = parentList.getAttribute('type') || '1';
+        const start = parseInt(parentList.getAttribute('start'), 10) || 1;
+        const displayNumber = start + index;
+
+        switch (type) {
+            case 'a': // a, b, c...
+                // 97 é o código do caractere 'a'
+                return `Item ${String.fromCharCode(97 + index)}: `;
+            case 'A': // A, B, C...
+                // 65 é o código do caractere 'A'
+                return `Item ${String.fromCharCode(65 + index)}: `;
+            case 'i': // i, ii, iii...
+                return `Item ${toRoman(displayNumber).toLowerCase()}: `;
+            case 'I': // I, II, III...
+                return `Item ${toRoman(displayNumber)}: `;
+            case '1': // 1, 2, 3... (padrão)
+            default:
+                return `Item ${displayNumber}: `;
+        }
+    } else {
+        return 'Marcador: ';
+    }
+}
+
+
+function getLiTextOnly(liNode) {
+    const clone = liNode.cloneNode(true);
+    clone.querySelectorAll('p, ol, ul, blockquote, table, h1, h2, h3, h4, h5, h6').forEach(el => el.remove());
+    clone.querySelectorAll('[aria-hidden="true"]').forEach(el => el.remove());
+    return (clone.textContent || '').trim().replace(/\s+/g, ' ');
+}
+
+
 function extractContentWithSemantics(rootNode) {
     const segments = [];
     const elementsToProcess = rootNode.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, table');
+    const spokenLiPrefixes = new Set();
+
     elementsToProcess.forEach(node => {
         if ((node.closest('table') && node.tagName !== 'TABLE') || node.closest('[aria-hidden="true"]')) { return; }
         if (node.tagName === 'TABLE') {
             const tableSegment = processTable(node);
-            if (tableSegment && tableSegment.text) { segments.push(tableSegment); }
-        } else {
-            let prefix = (node.tagName === 'LI') ? 'Item da lista: ' : '';
-            const clone = node.cloneNode(true);
-            clone.querySelectorAll('[aria-hidden]').forEach(el => { if (el.getAttribute('aria-hidden') === 'true') el.remove(); });
-            const text = (clone.textContent || '').trim().replace(/\s+/g, ' ');
-            if (text) { segments.push({ text: prefix + text, element: node }); }
+            if (tableSegment && tableSegment.text) segments.push(tableSegment);
+            return;
         }
+
+        let text = '';
+        let prefix = '';
+
+        if (node.tagName === 'LI') {
+            text = getLiTextOnly(node);
+        } else {
+            const clone = node.cloneNode(true);
+            clone.querySelectorAll('[aria-hidden="true"]').forEach(el => el.remove());
+            text = (clone.textContent || '').trim().replace(/\s+/g, ' ');
+        }
+
+        if (!text) {
+            return;
+        }
+
+        const parentLi = node.closest('li');
+        if (parentLi && !spokenLiPrefixes.has(parentLi)) {
+            prefix = getListPrefix(parentLi);
+            spokenLiPrefixes.add(parentLi);
+        }
+
+        segments.push({ text: prefix ? prefix + text : text, element: node });
     });
+
     return segments;
 }
 
