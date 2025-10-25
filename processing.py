@@ -318,34 +318,34 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
     * **Immediately AFTER each such equation, insert another element that is INVISIBLE visually but READ by screen readers. Use a `.sr-only` class for this. The content of this element must be a NATURAL LANGUAGE description in **Brazilian Portuguese**, describing how the equation should be read aloud. <span class="sr-only">t maior que 0</span>. Use this for both inline mathematics and display mathematics (equations on their own line).
 
     ---
-    **[INÍCIO DAS DIRETRIZES DE LEITURA DE EQUAÇÕES]**
+    **[START OF EQUATION READING GUIDELINES]**
     To ensure this description is clear and unambiguous, you MUST follow these essential guidelines:
 
     **Objective:** Produce a verbal description of mathematical expressions that is precise, explicit, and easy to understand for someone who cannot see the equation. Clarity has priority over brevity.
 
     **1. Principle of Structure and Boundaries (Most Important Rule):**
-    * **Fractions (`\\frac{{A}}{{B}}`):** Always explicitly announce the numerator and denominator. Use a structure like: "the fraction with numerator A and denominator B". **Never** use ambiguous terms like "A over B".
-    * **Roots (`\\sqrt{{A}}`, `\\sqrt[n]{{A}}`):** Announce the beginning and end of the root's scope. Example: "the square root of [content] end of root" or "the cube root of [content] end of cube root".
-    * **Parentheses, Brackets, and Modulus:** Verbally announce the opening and closing of all delimiters. Example: "open parentheses [content] close parentheses" or "the modulus of [content] end of modulus".
-    * **Integrals and Limits:** Describe the operator and its boundaries first before describing the main expression. Example: "the definite integral from A to B of [expression]" or "the limit as x approaches A of [expression]".
+    * **Fractions (`\\frac{{A}}{{B}}`):** Always explicitly announce the numerator and denominator. Use a structure like: "a fração com o numerador A e denominador B". **Never** use ambiguous terms like "A sobre B".
+    * **Roots (`\\sqrt{{A}}`, `\\sqrt[n]{{A}}`):** Announce the beginning and end of the root's scope. Example: "a raiz quadrada de [content] fim da raiz" or "a raiz cúbica de [content] fim da raiz cúbica".
+    * **Parentheses, Brackets, and Modulus:** Verbally announce the opening and closing of all delimiters. Example: "abre parênteses [content] fecha parênteses" or "o módulo de [content] fim do módulo".
+    * **Integrals and Limits:** Describe the operator and its boundaries first before describing the main expression. Example: "a integral definida de A aa B de [expression]" or "o limite de x tendendo a A da [expression]".
 
     **2. Principle of Symbols and Operators:**
-    * **Derivatives (Notation `f'`):** Consistently use the term "the derivative of". For higher orders (`f''`), use "the second derivative of", and so on. This applies to functions, variables, or entire expressions.
-    * **Subscripts (`x_n`):** Always verbalize as "x subscript n".
-    * **Powers (`x^n`):** Use the form "x to the power of n". For common exponents, "x squared" (`x^2`) and "x cubed" (`x^3`) are acceptable.
-    * **Set Symbols:** Verbalize symbols with their full names: `∈` as "belongs to", `⊂` as "is a subset of", `∩` as "intersection", `∀` as "for all".
-    * **Standard Number Sets:** Use the full names: `ℝ` (the set of real numbers), `ℂ` (the set of complex numbers), `ℤ` (the set of integers).
-    * **Function Mapping (`f: A \\to B`):** Describe as "the function f maps from A to B".
-    * **Definition (`:=`):** Read as "is defined as".
+    * **Derivatives (Notation `f'`):** Consistently use the term "a derivada de". For higher orders (`f''`), use "a segunda derivada de", and so on. This applies to functions, variables, or entire expressions.
+    * **Subscripts (`x_n`):** Always verbalize as "x índice n".
+    * **Powers (`x^n`):** Use the form "x elevado à potência de n". For common exponents, "x ao quadrado" (`x^2`) and "x ao cubo" (`x^3`) are acceptable.
+    * **Set Symbols:** Verbalize symbols with their full names: `∈` as "pertence a", `⊂` as "é um subconjunto de", `∩` as "interseção", `∀` as "para todo".
+    * **Standard Number Sets:** Use the full names: `ℝ` (o conjunto dos números reais), `ℂ` (o conjunto dos números complexos), `ℤ` (o conjunto dos números inteiros).
+    * **Function Mapping (`f: A \\to B`):** Describe as "a função f mapeia de A para B".
+    * **Definition (`:=`):** Read as "é definido como".
 
     **3. Principle of Document Context:**
     * **Item Structure:** If the equation is part of a list or exercise with markers (e.g., (a), (b), 1., 2.), announce the item before describing the equation. Example: "Item a: [equation description]".
     * **Titles and Sections:** If there are titles or section headings (e.g., `\\section{{Average Speed}}`), announce them as such to give context to the listener.
-    **[FIM DAS DIRETRIZES DE LEITURA DE EQUAÇÕES]**
+    **[END OF EQUATION READING GUIDELINES]**
     ---
 
-    * **REGRA DE PAREAMENTO OBRIGATÓRIO: Toda vez que você escrever uma equação LaTeX dentro de `<span aria-hidden="true">...</span>`, é MANDATÓRIO que ela seja imediatamente seguida por sua descrição correspondente em linguagem natural dentro de `<span class="sr-only">...</span>`. NÃO HÁ EXCEÇÕES para esta regra. Os dois elementos devem sempre aparecer juntos como um par.**
-    * **ESTRUTURA DE BLOCO OBRIGATÓRIA: O par de <span> (equação visual e descrição textual) DEVE ser envolvido por um elemento de bloco parágrafo <p>: <p><span aria-hidden="true">...</span> <span class="sr-only">...</span></p>**
+    * **MANDATORY PAIRING RULE: Every time you write a LaTeX equation inside `<span aria-hidden="true">...</span>`, it is MANDATORY that it be immediately followed by its corresponding natural language description inside `<span class="sr-only">...</span>`. THERE ARE NO EXCEPTIONS to this rule. The two elements must always appear together as a pair.**
+    * **MANDATORY BLOCK STRUCTURE: The pair of <span> (visual equation and textual description) MUST be enclosed by a block-level paragraph element <p>: <p><span aria-hidden="true">...</span> <span class="sr-only">...</span></p>**
     * **CRITICAL DELIMITER USAGE:** For inline mathematics, YOU MUST USE `<span aria-hidden="true">\\(...\\)</span>` (e.g., `<span aria-hidden="true">\\(x=y\\)</span>`). For display mathematics (equations on their own line), YOU MUST USE `<span aria-hidden="true">$$...$$</span>` (e.g., `<span aria-hidden="true">$$x = \\sum y_i$$</span>`).
     * **Ensure that *all* mathematical symbols, including single-letter variables mentioned in prose (e.g., '...where v is velocity...'), are enclosed in inline LaTeX delimiters followed by a natural language description (e.g., output as '...where <span aria-hidden="true">\\(v\\)</span> <span class="sr-only">v</span> is velocity...').** This applies to all isolated symbols.
     * Exemple inline mathematics: <p>Se a posição de um carro no instante <span aria-hidden="true">\\(t > 0\\)</span> <span class="sr-only"> t maior que 0</span> é dada por <span aria-hidden="true">\\(s(t) = (4+t^2)\\)</span> <span class="sr-only">s de t é igual a 4 mais t ao quadrado</span></p>
@@ -393,7 +393,7 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
         </table>
         ```
 
-5.  **Hierarquia de Títulos (NAVIGATION CRITICAL):**
+5.  **Hierarchy of Headings (NAVIGATION CRITICAL):**
     * Identify the document's structural hierarchy within the page content (e.g., section titles, sub-section titles).
     * **CRITICAL:** DO NOT create new titles or headings that do not exist in the original text.
     * Use `<h3>`, `<h4>`, `<h5>`, and `<h6>` tags to mark this hierarchy. A main section title on the page should be `<h3>`, a subsection within it `<h4>`, and so on.
@@ -421,7 +421,7 @@ Analyze the content of the provided image (filename: {page_filename}, dimensions
             </div>
             ```
 
-8.  **Abreviações e Acrônimos:**
+8.  **Abbreviations and Acronyms:**
     * If you identify a known abbreviation or acronym (e.g., ABNT, PIB, DNA), use the `<abbr>` tag to provide its full expansion. This helps screen readers pronounce them correctly.
     * Example: `Segundo a <abbr title="Associação Brasileira de Normas Técnicas">ABNT</abbr>, a regra é...`
 
