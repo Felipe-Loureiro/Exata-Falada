@@ -28,7 +28,12 @@ CORS(app, resources={r"/api/*": {"origins": ["http://localhost:5173", "https://e
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # Limite de 50 MB para upload
-app.secret_key = os.urandom(24)  # NECESSÁRIO para usar o sistema de mensagens 'flash'
+
+# python3 -c 'import os; print(os.urandom(24).hex())'
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY')
+
+if not app.config['SECRET_KEY']:
+    raise ValueError("A variável de ambiente FLASK_SECRET_KEY não foi definida.")
 
 # --- INICIALIZAÇÃO DO BANCO DE DADOS ---
 # Garante que o arquivo do banco de dados e a tabela sejam criados na inicialização
