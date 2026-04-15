@@ -25,9 +25,25 @@ load_dotenv()
 
 # --- Configuração Inicial ---
 API_KEY_ENV_VAR = "GOOGLE_API_KEY"
-DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
-AVAILABLE_GEMINI_MODELS = [ 'gemini-2.0-flash', 'gemini-2.0-flash-lite','gemini-2.5-flash-lite',
-    'gemini-2.5-flash', 'gemini-2.5-pro'
+DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash'
+AVAILABLE_GEMINI_MODELS = [
+    # --- Gemini 2.0 (baixo custo, bom pra testes) ---
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+    # --- Gemini 2.5 (estáveis, produção) ---
+    'gemini-2.5-flash',              # melhor custo-benefício
+    'gemini-2.5-flash-lite',         # mais rápido e barato
+    'gemini-2.5-pro',                # mais avançado
+    # --- Gemini 3 (preview) ---
+    'gemini-3-flash-preview',
+    'gemini-3.1-flash-lite-preview',
+    # --- Gemma 3 (open weights, multimodais, via API) ---
+    'gemma-3-4b-it',                 # 4B
+    'gemma-3-12b-it',                # 12B
+    'gemma-3-27b-it',                # 27B — topo Gemma 3
+    # --- Gemma 4 (open weights, multimodais, via API) ---
+    'gemma-4-26b-a4b-it',            # 26B MoE (4B ativos) — workstation
+    'gemma-4-31b-it',                # 31B denso — com thinking mode
 ]
 
 #Atualizar com frequência a partir de https://ai.google.dev/gemini-api/docs/models
